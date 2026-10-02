@@ -1,6 +1,6 @@
 # Codec Vision
 
-Built at the [Real-Time Video Agents Hack](https://tokensand.com/vastsf) with VAST, NVIDIA Cosmos,
+Built at the [Real-Time Video Agents Hack](https://tokensand.com/vastsf) with VAST, NVIDIA Cosmos, Cursor,
 CoreWeave and Weights & Biases.
 
 **Run AI on security cameras only when something happens, using motion the camera's own video
