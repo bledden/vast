@@ -2,7 +2,7 @@
 """Live worker: subscribe to a camera over MoQ, decide per frame what to send to YOLO using the
 codec's motion vectors, and publish the results as a `detections` track on `<camera>-ai`.
 
-    python worker.py --broadcast cam [--mode region|frame|every] [--url http://localhost:4443]
+    python worker.py --broadcast cam [--mode frame|region|every] [--url http://localhost:4443]
 
 Each frame of the `detections` track is JSON, timestamped with the source video frame:
     {"t": us, "w": W, "h": H, "full": bool, "regions": [[x0,y0,x1,y1]],
@@ -87,7 +87,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="http://localhost:4443")
     p.add_argument("--broadcast", default="cam")
-    p.add_argument("--mode", default="region", choices=["region", "frame", "every"])
+    p.add_argument("--mode", default="frame", choices=["region", "frame", "every"])
     p.add_argument("--min-cluster", type=int, default=8)
     p.add_argument("--weights", default="yolo11n.pt")
     asyncio.run(run(p.parse_args()))

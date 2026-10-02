@@ -6,3 +6,5 @@ clips/
 *.pt
 footage/
 .env
+results/
+moving/
