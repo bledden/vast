@@ -46,8 +46,14 @@ class Worker:
             h, w = img.shape[:2]
             g = grid(frame, w, h)
             step = self.engine.step(img, g)
-            moving = step.active is not None and bool(step.active.any())
-            ev = self.agent.feed(img, ts, moving, [self.names[d.cls] for d in step.dets if d.state == "fresh"] if moving else [])
+            # An event is motion on a detected object; swaying trees and flicker don't count.
+            movers = []
+            if step.active is not None and step.active.any():
+                for d in step.dets:
+                    x0, y0, x1, y1 = Engine._blocks(d.box, step.active.shape)
+                    if step.active[y0:y1, x0:x1].mean() > 0.2:
+                        movers.append(self.names[d.cls])
+            ev = self.agent.feed(img, ts, bool(movers), movers)
             if ev:
                 self.started.append(ev)
             self.frames += 1

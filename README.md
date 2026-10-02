@@ -17,7 +17,7 @@ pip install -r requirements.txt moq-rs     # plus moq and moq-relay on PATH
 moq-relay relay.toml                       # local relay on :4443
 ./camera.sh scene.mp4 cam                  # loop a clip into MoQ in real time
 python worker.py --broadcast cam           # publishes cam-ai/detections
-python -m http.server -d web 8077          # open http://localhost:8077
+python -m http.server -d web 8077 --bind :: # open http://localhost:8077 (Chrome)
 ```
 
 `./scene.sh` builds a synthetic test clip; any H.264 clip without B-frames works.
