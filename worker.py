@@ -136,6 +136,11 @@ async def camera(client, args, det: Detector, name: str):
                 async for f in media:
                     if not demand.is_used():  # last viewer left: stop the models, unsubscribe from the camera
                         print(f"{name}: unwatched; stopping AI")
+                        if agent.event is not None:  # stopped mid-event: it will never be described
+                            events.pop(agent.event["id"], None)
+                            agent.event = None
+                            recent = sorted(events.values(), key=lambda e: e["id"])[-10:]
+                            events_track.write_frame(json.dumps(recent, separators=(",", ":")).encode(), f.timestamp_us)
                         break
                     for msg in await asyncio.to_thread(worker.process, bytes(f.payload), f.timestamp_us):
                         track.write_frame(msg, f.timestamp_us)

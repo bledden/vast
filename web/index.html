@@ -19,9 +19,14 @@
   .stage { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; }
   .stage moq-watch, .stage moq-watch canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
   .stage .overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; object-fit: contain; }
-  .banner { position: absolute; left: 0; right: 0; top: 0; padding: 8px 12px; background: rgba(255, 59, 92, 0.92); color: #fff;
+  .banner { position: absolute; left: 0; right: 0; top: 0; padding: 8px 12px; color: #000;
             font-weight: 600; transform: translateY(-100%); transition: transform 0.25s; z-index: 2; }
-  .banner.on { transform: none; animation: pulse 1s ease-in-out 3; }
+  .banner.on { transform: none; }
+  .banner.analyzing { background: rgba(255, 200, 0, 0.92); }
+  .banner.done, .banner.no-agent { background: rgba(63, 185, 80, 0.92); }
+  .banner.error { background: rgba(110, 118, 129, 0.92); color: #fff; }
+  .banner.alert { background: rgba(255, 59, 92, 0.92); color: #fff; }
+  .banner.alert.on { animation: pulse 1s ease-in-out 3; }
   @keyframes pulse { 50% { background: rgba(255, 59, 92, 0.6); } }
 
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
@@ -94,6 +99,7 @@
     follow(url, `${name}-ai`, "events", (text) => {
       state[name].events = JSON.parse(text).filter((e) => e.state !== "quiet");
       flagAlerts(name);
+      if (name === selected) updateBanner();
       renderAll();
     }, 1).catch(console.error);
   }
@@ -114,6 +120,7 @@
     cam = mountCamera(stage, { url, name, show });
     stage.append(banner);
     banner.classList.remove("on");
+    updateBanner();
     document.getElementById("ai").checked = true;
     for (const n of cams) state[n].tab.classList.toggle("on", n === name);
     history.replaceState(null, "", link(name));
@@ -146,13 +153,24 @@
       if (first) continue;
       s.tab.classList.add("alerting");
       setTimeout(() => s.tab.classList.remove("alerting"), 6000);
-      if (name === selected) {
-        banner.textContent = `ALERT · ${e.summary}`;
-        banner.classList.add("on");
-        clearTimeout(banner.timer);
-        banner.timer = setTimeout(() => banner.classList.remove("on"), 8000);
-      }
     }
+  }
+
+  // The banner over the video follows the selected camera's latest event: "analyzing" while
+  // Cosmos works, then the description (red for an alert), hiding after a few seconds.
+  const bannered = new Set();
+  function updateBanner() {
+    const last = state[selected].events[state[selected].events.length - 1];
+    if (!last) return;
+    const key = `${selected}/${last.id}/${last.state}`;
+    if (bannered.has(key)) return;
+    bannered.add(key);
+    if (first && last.state !== "analyzing") return; // don't replay finished events on page load
+    banner.className = `banner on ${last.state}`;
+    banner.textContent = last.state === "analyzing" ? "Motion on an object · analyzing with NVIDIA Cosmos..."
+      : `${last.state === "alert" ? "ALERT · " : ""}${last.summary ?? ""}`;
+    clearTimeout(banner.timer);
+    if (last.state !== "analyzing") banner.timer = setTimeout(() => banner.classList.remove("on"), 8000);
   }
 
   function renderAll() {
