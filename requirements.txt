@@ -5,3 +5,5 @@ pillow
 boto3
 ultralytics
 wandb
+weave
+moq-rs

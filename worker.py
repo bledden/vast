@@ -9,7 +9,7 @@ Each frame of the `detections` track is JSON, timestamped with the source video 
      "dets": [[x0,y0,x1,y1,label,conf,state]], "mb": 16, "motion": [[bx,by,dx,dy]],
      "stats": {"frames", "inferred", "ms", "full_ms"}}
 """
-import argparse, asyncio, json, time
+import argparse, asyncio, json, os, time
 
 import av
 import moq
@@ -17,10 +17,20 @@ import numpy as np
 
 from engine import Detector, Engine, grid
 
+# Credentials live in a git-ignored .env next to this file; never printed.
+if os.path.exists(os.path.join(os.path.dirname(__file__), ".env")):
+    for line in open(os.path.join(os.path.dirname(__file__), ".env")):
+        k, _, v = line.strip().partition("=")
+        if k and v and not k.startswith("#"):
+            os.environ.setdefault(k, v.strip().strip('"'))
+
+from agent import EventAgent  # noqa: E402  (reads the environment at import)
+
 
 class Worker:
-    def __init__(self, engine: Engine, names):
-        self.engine, self.names = engine, names
+    def __init__(self, engine: Engine, names, agent: EventAgent):
+        self.engine, self.names, self.agent = engine, names, agent
+        self.started = []  # event-start messages produced by the last call
         self.codec = av.CodecContext.create("h264", "r")
         self.codec.options = {"flags2": "+export_mvs"}
         self.frames = self.inferred = 0
@@ -36,6 +46,10 @@ class Worker:
             h, w = img.shape[:2]
             g = grid(frame, w, h)
             step = self.engine.step(img, g)
+            moving = step.active is not None and bool(step.active.any())
+            ev = self.agent.feed(img, ts, moving, [self.names[d.cls] for d in step.dets if d.state == "fresh"] if moving else [])
+            if ev:
+                self.started.append(ev)
             self.frames += 1
             self.inferred += step.calls > 0
             self.ms += step.ms
@@ -61,14 +75,22 @@ async def run(args):
     async with moq.connect(args.url) as client:
         out = client.create_broadcast(f"{args.broadcast}-ai")
         track = out.publish_track("detections")
+        events_track = out.publish_track("events")
+        agent = EventAgent()
+        events = {}  # id -> latest state; published as a snapshot so late viewers see history
+
+        def publish_events(ts):
+            recent = sorted(events.values(), key=lambda e: e["id"])[-10:]
+            events_track.write_frame(json.dumps(recent, separators=(",", ":")).encode(), ts)
         out.announce()
-        print(f"publishing {args.broadcast}-ai/detections (mode={args.mode}, device={det.device})")
+        print(f"publishing {args.broadcast}-ai/detections+events (mode={args.mode}, device={det.device}, "
+              f"cosmos={agent.model or 'disabled: no GPU_BEARER_TOKEN'})")
 
         while True:
             src = await client.request_broadcast(args.broadcast)
             cat = await src.catalog()
             name = next(iter(cat.video))
-            worker = Worker(Engine(det, mode=args.mode, min_cluster=args.min_cluster), det.names)
+            worker = Worker(Engine(det, mode=args.mode, min_cluster=args.min_cluster), det.names, agent)
             media = await src.subscribe_media(name, cat.video[name])
             started, lag = time.time(), 0.0
             async with media:
@@ -76,6 +98,17 @@ async def run(args):
                     t = time.perf_counter()
                     for msg in await asyncio.to_thread(worker.process, bytes(f.payload), f.timestamp_us):
                         track.write_frame(msg, f.timestamp_us)
+                    changed = bool(worker.started)
+                    for ev in worker.started:
+                        events[ev["id"]] = ev
+                    worker.started.clear()
+                    while not agent.done.empty():
+                        ev = agent.done.get()
+                        events[ev["id"]] = ev
+                        changed = True
+                        print(f"event {ev['id']} [{ev['state']}] {ev['labels']}: {ev['summary']} ({ev['ms']} ms)")
+                    if changed:
+                        publish_events(f.timestamp_us)
                     lag = time.perf_counter() - t
                     if worker.frames % 150 == 0:
                         print(f"{worker.frames} frames, inferred {100 * worker.inferred / worker.frames:.0f}%, "
