@@ -33,7 +33,7 @@ On each motion event (at least 1s of codec motion) the worker sends a 4 fps clip
 Cosmos3-Reason on CoreWeave and publishes the description on the `events` track. Set
 `GPU_BEARER_TOKEN` (and optionally `WANDB_API_KEY` for Weave traces) in a git-ignored `.env`.
 
-Event clips are also written to `events/`. `python upload.py --watch` pushes them into VAST VSS
+With `--save-events`, described clips are written to `events/` and `python upload.py --watch` pushes them into VAST VSS
 (`VSS_USERNAME`, `VSS_PASSWORD`), so only the moments that mattered get indexed and searched.
 
 ## Offline comparison

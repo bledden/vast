@@ -82,7 +82,7 @@ async def run(args):
         out = client.create_broadcast(f"{args.broadcast}-ai")
         track = out.publish_track("detections")
         events_track = out.publish_track("events")
-        agent = EventAgent(camera=args.broadcast)
+        agent = EventAgent(camera=args.broadcast, save=args.save_events)
         events = {}  # id -> latest state; published as a snapshot so late viewers see history
 
         def publish_events(ts):
@@ -137,6 +137,7 @@ def main():
     p.add_argument("--mode", default="frame", choices=["region", "frame", "every"])
     p.add_argument("--min-cluster", type=int, default=8)
     p.add_argument("--weights", default="yolo11n.pt")
+    p.add_argument("--save-events", action="store_true", help="write described event clips to events/ for upload.py")
     asyncio.run(run(p.parse_args()))
 
 

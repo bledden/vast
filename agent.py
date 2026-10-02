@@ -74,9 +74,9 @@ def encode(frames: list[np.ndarray], fps: int) -> bytes:
 
 
 class EventAgent:
-    def __init__(self, camera: str = "cam", fps: float = 30, sample_fps: int = 4, quiet_s: float = 1.5, max_s: float = 10, min_s: float = 1.0,
+    def __init__(self, camera: str = "cam", save: bool = False, fps: float = 30, sample_fps: int = 4, quiet_s: float = 1.5, max_s: float = 10, min_s: float = 1.0,
                  width: int = 640):
-        self.camera = camera
+        self.camera, self.save = camera, save
         self.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "events")  # clips for upload.py
         os.makedirs(self.dir, exist_ok=True)
         self.enabled, self.model = bool(os.environ.get("GPU_BEARER_TOKEN")), None
@@ -128,9 +128,11 @@ class EventAgent:
         except Exception as err:  # surface the failure in the UI instead of dropping the event
             text, state = f"Cosmos call failed: {err}", "error"
         summary = re.sub(r"\s*ALERT:\s*(yes|no)\.?", "", text, flags=re.I).strip()
+        if state == "done" and re.match(r"(nothing|no (visible )?(motion|movement|activity))", summary, re.I):
+            state = "quiet"  # Cosmos saw nothing worth keeping: hide it and don't store the clip
         done = {"id": e["id"], "start": e["start"], "end": e["end"], "labels": sorted(e["labels"]),
                 "state": state, "summary": summary, "ms": round((time.time() - t) * 1000)}
-        if state != "error":
+        if self.save and state in ("done", "alert"):
             base = os.path.join(self.dir, f"{self.camera}_{time.strftime('%Y%m%d_%H%M%S')}_{e['id']}")
             with open(base + ".mp4", "wb") as f:
                 f.write(clip)
