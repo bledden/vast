@@ -2,12 +2,11 @@
 """Push motion-event clips (written by the worker into events/) into VAST VSS, so they're
 indexed by the VAST pipeline and searchable in its UI. Only events go in, never idle footage.
 
-    export VSS_URL=https://team-47-vss.thecosmoslabs.com VSS_USERNAME=team-47 VSS_PASSWORD=...
-    python upload.py [--watch]
+    VSS_USERNAME=team-47 python upload.py [--watch]    # prompts for the password
 
 Each clip is uploaded once; a .uploaded marker records its object key.
 """
-import argparse, glob, json, os, time, uuid, urllib.request
+import argparse, getpass, glob, json, os, time, uuid, urllib.request
 
 
 def login(url, user, password):
@@ -39,7 +38,9 @@ def main():
     p.add_argument("--watch", action="store_true", help="keep uploading new events as they appear")
     args = p.parse_args()
     url = os.environ.get("VSS_URL", "https://team-47-vss.thecosmoslabs.com").rstrip("/")
-    token = login(url, os.environ["VSS_USERNAME"], os.environ["VSS_PASSWORD"])
+    user = os.environ.get("VSS_USERNAME") or input("VSS username: ")
+    token = login(url, user, os.environ.get("VSS_PASSWORD") or getpass.getpass(f"VSS password for {user}: "))
+    print("logged in; uploading motion events from events/")
     folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "events")
     while True:
         for clip in sorted(glob.glob(os.path.join(folder, "*.mp4"))):
