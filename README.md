@@ -97,7 +97,7 @@ uv venv && uv pip install -r requirements.txt     # plus moq and moq-relay on PA
 
 The demo clips come from the VAST Builders Challenge corpus and aren't redistributed here. With
 access to a team's VSS instance, download these chunks from its Explore page (or run
-`python fetch.py`), then re-encode them the way a simple camera sends video:
+`VSS_USERNAME=team-47 python fetch.py --list`, then e.g. `python fetch.py neighborhood_20260901 --chunks 0-11` to join consecutive chunks into one long clip), then re-encode them the way a simple camera sends video:
 
 | Camera | Source chunk |
 |---|---|
