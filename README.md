@@ -27,6 +27,15 @@ regions to YOLO. Results go out as a separate `detections` track, timestamped wi
 frame they belong to, so the viewer draws them in sync. Boxes are colored by how they were
 produced: re-detected, cached (no motion under them), or moved by the motion vectors alone.
 
+## Agent and VAST
+
+On each motion event (at least 1s of codec motion) the worker sends a 4 fps clip to NVIDIA
+Cosmos3-Reason on CoreWeave and publishes the description on the `events` track. Set
+`GPU_BEARER_TOKEN` (and optionally `WANDB_API_KEY` for Weave traces) in a git-ignored `.env`.
+
+Event clips are also written to `events/`. `python upload.py --watch` pushes them into VAST VSS
+(`VSS_USERNAME`, `VSS_PASSWORD`), so only the moments that mattered get indexed and searched.
+
 ## Offline comparison
 
 ```sh

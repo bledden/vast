@@ -76,7 +76,7 @@ async def run(args):
         out = client.create_broadcast(f"{args.broadcast}-ai")
         track = out.publish_track("detections")
         events_track = out.publish_track("events")
-        agent = EventAgent()
+        agent = EventAgent(camera=args.broadcast)
         events = {}  # id -> latest state; published as a snapshot so late viewers see history
 
         def publish_events(ts):

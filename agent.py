@@ -9,7 +9,7 @@ is traced in W&B Weave.
 """
 from __future__ import annotations
 
-import base64, io, json, os, queue, threading, time, urllib.request
+import base64, io, json, os, queue, re, threading, time, urllib.request
 
 import av
 import cv2
@@ -74,8 +74,11 @@ def encode(frames: list[np.ndarray], fps: int) -> bytes:
 
 
 class EventAgent:
-    def __init__(self, fps: float = 30, sample_fps: int = 4, quiet_s: float = 1.5, max_s: float = 10, min_s: float = 1.0,
+    def __init__(self, camera: str = "cam", fps: float = 30, sample_fps: int = 4, quiet_s: float = 1.5, max_s: float = 10, min_s: float = 1.0,
                  width: int = 640):
+        self.camera = camera
+        self.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "events")  # clips for upload.py
+        os.makedirs(self.dir, exist_ok=True)
         self.enabled, self.model = bool(os.environ.get("GPU_BEARER_TOKEN")), None
         if self.enabled:
             try:
@@ -118,11 +121,19 @@ class EventAgent:
 
     def _describe(self, e):
         t = time.time()
+        clip = encode(e["frames"], self.sample_fps)
         try:
-            text = describe(encode(e["frames"], self.sample_fps), sorted(e["labels"]), self.model)
+            text = describe(clip, sorted(e["labels"]), self.model)
             state = "alert" if "alert: yes" in text.lower() else "done"
         except Exception as err:  # surface the failure in the UI instead of dropping the event
             text, state = f"Cosmos call failed: {err}", "error"
-        summary = "\n".join(l for l in text.splitlines() if not l.strip().lower().startswith("alert:")).strip()
-        self.done.put({"id": e["id"], "start": e["start"], "end": e["end"], "labels": sorted(e["labels"]),
-                       "state": state, "summary": summary, "ms": round((time.time() - t) * 1000)})
+        summary = re.sub(r"\s*ALERT:\s*(yes|no)\.?", "", text, flags=re.I).strip()
+        done = {"id": e["id"], "start": e["start"], "end": e["end"], "labels": sorted(e["labels"]),
+                "state": state, "summary": summary, "ms": round((time.time() - t) * 1000)}
+        if state != "error":
+            base = os.path.join(self.dir, f"{self.camera}_{time.strftime('%Y%m%d_%H%M%S')}_{e['id']}")
+            with open(base + ".mp4", "wb") as f:
+                f.write(clip)
+            with open(base + ".json", "w") as f:
+                json.dump({**done, "camera": self.camera}, f)
+        self.done.put(done)
