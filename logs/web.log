@@ -1,4 +1,0 @@
-::1 - - [02/Oct/2026 14:03:15] "GET /?name=driveway HTTP/1.1" 200 -
-::1 - - [02/Oct/2026 14:03:15] "GET /camera.js HTTP/1.1" 200 -
-::1 - - [02/Oct/2026 14:03:16] code 404, message File not found
-::1 - - [02/Oct/2026 14:03:16] "GET /favicon.ico HTTP/1.1" 404 -
