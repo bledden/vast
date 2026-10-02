@@ -1,13 +1,24 @@
 // Portable local incident reports. No network, model calls, or stream subscriptions.
 const finite = n => Number.isFinite(n) ? n : null;
-export function chooseResult(results, timestamp) {
-  if (!results.length) return {result: null, selection: "no_results", timestamp: finite(timestamp)};
-  if (timestamp === undefined || timestamp === null || !Number.isFinite(timestamp))
-    return {result: results[results.length - 1], selection: "no_renderer_timestamp", timestamp: null};
+export function chooseResult(results, raw) {
+  // Preserve the original viewer's coercion/selection, including unusual timestamp values.
+  const timestamp = raw == null ? null : finite(Number(raw));
+  const type = typeof raw;
+  const common = {timestamp, timestamp_type: type,
+    timestamp_raw: typeof raw === "string" ? raw.slice(0,80) : finite(raw)};
+  if (!results.length) return {...common, result: null, selection: "no_results"};
+  if (raw === undefined) return {...common, result: results.at(-1), selection: "no_renderer_timestamp"};
   let best;
-  for (const r of results) if (r.t <= timestamp * 1000 + 1000 && (!best || r.t > best.t)) best = r;
-  return {result: best ?? results[results.length - 1], selection: best ? "matched" : "no_result_at_or_before_frame", timestamp};
+  for (const r of results) if (r.t <= raw * 1000 + 1000 && (!best || r.t > best.t)) best = r;
+  return {...common, result: best ?? results.at(-1), selection: best ? "matched" : "no_result_at_or_before_frame"};
 }
+export function selectEvents(events, t) {
+  const tail = events.slice(-3);
+  const overlaps = e => Number.isFinite(t) && Number.isFinite(e.start) && Number.isFinite(e.end) && e.start <= t && t <= e.end;
+  return [...events.filter(overlaps).slice(-7), ...tail.filter(e => !overlaps(e))].slice(-10)
+    .map(e => ({...e, relation: overlaps(e) ? "overlaps_capture" : "recent_context_only"}));
+}
+
 function record(r) {
   if (!r) return null;
   return {t: finite(r.t), w: finite(r.w), h: finite(r.h), full: !!r.full,
@@ -17,11 +28,12 @@ function record(r) {
     truncated: (r.dets?.length ?? 0) > 1000 || (r.regions?.length ?? 0) > 1000 || (r.motion?.length ?? 0) > 2000,
     stats: Object.fromEntries(["frames", "inferred", "held", "ms", "full_ms"].map(k => [k, finite(r.stats?.[k])]))};
 }
-export function snapshotMetadata({choice, results, show, wanted, camera, events = []}) {
+export function snapshotMetadata({choice, results, show, wanted, camera, events = [], viewerSession = null}) {
   const selected = record(choice.result);
   return {schema_version: 1, kind: "viewer_report", captured_at: new Date().toISOString(),
-    camera: String(camera).slice(0, 128), video_clip: {available: false, reason: "viewer_has_no_video_history"},
-    timing: {renderer_timestamp_raw: choice.timestamp, renderer_unit_assumed: "milliseconds",
+    report_id: globalThis.crypto?.randomUUID?.() ?? null, viewer_session_id: viewerSession,
+    selection_method: "human_reported_incident", camera: String(camera).slice(0, 128), video_clip: {available: false, reason: "viewer_has_no_video_history"},
+    timing: {renderer_timestamp_raw: choice.timestamp_raw ?? null, renderer_timestamp_type: choice.timestamp_type ?? "unknown", renderer_timestamp_ms: choice.timestamp, renderer_unit_assumed: "milliseconds",
       renderer_source: "moq-watch renderer.out.timestamp", presentation_semantics_verified: false,
       detection_timestamp_us: selected?.t ?? null,
       result_minus_video_ms: selected?.t != null && choice.timestamp != null ? selected.t / 1000 - choice.timestamp : null,
@@ -29,11 +41,11 @@ export function snapshotMetadata({choice, results, show, wanted, camera, events 
     detection_size: selected ? {width: selected.w, height: selected.h} : null,
     box_coordinate_space: "detection_size", coordinate_mapping: "Not calibrated; preserve independent image dimensions.",
     ai_on: !!wanted, layers: {boxes: !!show.boxes, motion: !!show.motion, regions: !!show.regions},
-    detections: {available: !!selected && wanted, reason: !wanted ? "ai_off" : choice.selection,
+    detections: {available: !!selected && wanted, reason: !wanted ? "ai_off" : selected ? null : "no_results", selection: choice.selection,
       selected, history: results.slice(-30).map(record), history_truncated: results.length > 30},
-    events: events.slice(-10).map(e => ({camera: String(camera).slice(0,128), id: e.id, start: finite(e.start), end: finite(e.end),
-      state: e.state, labels: (e.labels ?? []).slice(0,100), summary: String(e.summary ?? "").slice(0,4000),
-      trace: {state: e.state === "analyzing" ? "pending" : "unavailable", reason: "not_instrumented", access: "unknown"}})),
+    events: selectEvents(events, selected?.t).map(e => ({camera: String(camera).slice(0,128), id: e.id, start: finite(e.start), end: finite(e.end),
+      state: e.state, relation: e.relation, labels: (e.labels ?? []).slice(0,100), summary: String(e.summary ?? "").slice(0,4000),
+      trace: {state: "unavailable", reason: "not_instrumented", access: "unknown"}})),
     human: {issue: null, note: "", region: null}, source_revision: null};
 }
 // This copy is synchronous: later rendering, camera switches and slow PNG encoding cannot alter it.
@@ -60,7 +72,7 @@ async function encode(copy) {
 }
 export function captureReport(input, frame, overlay) {
   const metadata = snapshotMetadata(input);
-  const clean = copyCanvas(frame), painted = copyCanvas(overlay);
+  const clean = copyCanvas(frame), painted = input.choice.result && input.wanted ? copyCanvas(overlay) : {available:false, reason:"no_detection_result"};
   return Promise.all([encode(clean), encode(painted)]).then(([a,b]) => {
     metadata.frame = {...a.info, readback_content_verified: false}; metadata.overlay = b.info;
     metadata.video_size = a.info.available ? {width: a.info.width, height: a.info.height} : null;
@@ -90,36 +102,96 @@ export function zipStore(files) {
   v.setUint16(8,files.length,true); v.setUint16(10,files.length,true); v.setUint32(12,centralSize,true); v.setUint32(16,offset,true);
   return new Blob([...local,...central,end],{type:"application/zip"});
 }
+export function trainingCandidate(m, imageHash) {
+  return {schema_version:1, role:"annotation_candidate", eligible_for_training:false,
+    sample_id:imageHash ? "sha256:"+imageHash : null,
+    image:{file:m.frame.available ? "frame.png" : null, sha256:imageHash,
+      width:m.video_size?.width ?? null, height:m.video_size?.height ?? null,
+      source:"browser_decoded_canvas", content_verified:false, overlay_burned_in:false},
+    provenance:{report_id:m.report_id, camera:m.camera, viewer_session_id:m.viewer_session_id,
+      source_recording_id:null, source_video_sha256:null, source_frame_pts:null,
+      grouping_status:"source_recording_unresolved", suggested_split:null},
+    selection:{method:"human_reported_incident", issue:m.human.issue,
+      representative_sample:false, note:"Reported failures are biased; add ordinary scenes and reviewed negatives."},
+    annotation:{status:"unreviewed", class_schema:null, reviewed_boxes:null,
+      all_target_classes_reviewed:false, confirmed_background:false, reviewer:null},
+    predictions:{file:"detections.json", role:"unverified_suggestions", coordinate_space:"detection_size",
+      frame_mapping_verified:false, model_id:null, weights_sha256:null},
+    training_use_permission:{status:"unreviewed"},
+    blockers:[...(!m.frame.available ? ["clean_image_missing"] : []), ...(!imageHash ? ["image_hash_missing"] : []),
+      "clean_image_content_unverified", "annotations_unreviewed", "class_schema_unassigned",
+      "source_group_unresolved", "training_use_unreviewed"],
+    export_policy:"Never train on overlay.png or unreviewed predictions. No labels file is emitted. Label every target-class object in the clean image; a missing label is not confirmed background."};
+}
 export async function reportZip(report, human) {
-  const m=structuredClone(report.metadata); m.human={issue: human.issue || null, note: String(human.note || "").slice(0,2000), region:null};
-  const files=[];
-  for(const [name, blob] of [["frame.png",report.frame],["overlay.png",report.overlay]]) if(blob) files.push([name,new Uint8Array(await blob.arrayBuffer())]);
+  const m=structuredClone(report.metadata);
+  const issues=new Set(["missing_detection","wrong_box_or_class","overlay_timing","other"]);
+  m.human={issue:issues.has(human.issue)?human.issue:null, note:String(human.note||"").slice(0,2000), region:null};
+  const files=[]; let frameHash=null;
+  const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(b=>b.toString(16).padStart(2,"0")).join("");
+  for(const [name,blob] of [["frame.png",report.frame],["overlay.png",report.overlay]]) if(blob) {
+    const bytes=new Uint8Array(await blob.arrayBuffer()); files.push([name,bytes]);
+    if(name==="frame.png" && globalThis.crypto?.subtle) frameHash=await digest(bytes);
+  }
   const json=(name,data)=>files.push([name,encoder.encode(JSON.stringify(data,null,2))]);
   const {detections,events,...incident}=m;
   json("incident.json",incident); json("detections.json",detections); json("events.json",events);
-  const readme=`Codec Vision incident report\nCamera: ${m.camera}\nCaptured: ${m.captured_at}\nVideo clip: absent. This viewer keeps detection metadata, not rewindable video.\nClean frame: ${m.frame.available ? 'included; player readback content not independently verified' : m.frame.reason}\nOverlay: ${m.overlay.available ? 'included' : m.overlay.reason}\nBox coordinates: detection_size. Frame and overlay may have different dimensions.\nTiming: renderer unit follows existing viewer assumption; alignment delta is not live latency.\nWeave: no trace references recorded by this viewer version.\nPredictions are not reviewed labels. Human notes are separate in incident.json.\nNo Breakpoint or Weave account required to inspect this archive.\n`;
+  json("training-candidate.json",trainingCandidate(m,frameHash));
+  const readme=`Codec Vision incident report\nCamera: ${m.camera}\nCaptured: ${m.captured_at}\nVideo clip: absent. This viewer keeps detection metadata, not rewindable video.\nClean frame: ${m.frame.available ? 'included; player readback content not independently verified' : m.frame.reason}\nOverlay: ${m.overlay.available ? 'included' : m.overlay.reason}\nBox coordinates: detection_size. Frame and overlay may have different dimensions.\nTiming: renderer unit follows existing viewer assumption; alignment delta is not live latency.\nWeave: no trace references recorded by this viewer version.\nPredictions are not reviewed labels. Human notes are separate in incident.json.\nTraining: training-candidate.json is an UNREVIEWED annotation candidate, NOT a YOLO label file. Verify clean pixels, annotate all target objects, choose a class schema and source-group split before training. Never use overlay.png as a training image.\nNo Breakpoint or Weave account required to inspect this archive.\n`;
   files.push(["README.txt",encoder.encode(readme)]);
-  if(globalThis.crypto?.subtle) { const hashes={}; for(const [name,bytes] of files) hashes[name]=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(b=>b.toString(16).padStart(2,"0")).join(""); json("sha256.json",hashes); }
+  if(globalThis.crypto?.subtle) {const hashes={};for(const [name,bytes] of files)hashes[name]=await digest(bytes);json("sha256.json",hashes);}
   return zipStore(files);
 }
+export function describeCapture(m) {
+  const delta=m.timing.result_minus_video_ms;
+  const timing=delta==null ? "Timing alignment unavailable." : delta===0 ? "Result and video timestamps match." :
+    `Result is ${Math.abs(delta).toFixed(1)} ms ${delta<0?'before':'after'} the video timestamp (viewer assumption).`;
+  const selection={no_results:"No detection result available.",no_renderer_timestamp:"Video timestamp unavailable; latest result used.",
+    no_result_at_or_before_frame:"No result matched the video time; latest result used.",matched:"Result selected using the viewer's timing rule."}[m.detections.selection];
+  return `${m.camera} — captured ${new Date(m.captured_at).toLocaleString()}. ${m.ai_on?selection:'AI was off; no detection result.'} ${timing} Boxes ${m.layers.boxes?'on':'off'}; motion ${m.layers.motion?'on':'off'}.`;
+}
 export function mountReporter(parent, getCamera, getContext) {
-  const button=document.createElement("button"); button.textContent="Report incident"; button.type="button";
-  const panel=document.createElement("section"); panel.className="incident-panel"; panel.hidden=true;
-  panel.innerHTML=`<h2>Incident captured</h2><p class="incident-status"></p><div class="incident-preview"></div><label>Issue (optional) <select><option value="">Unspecified</option><option>Missing detection</option><option>Wrong box or class</option><option>Overlay timing</option><option>Other</option></select></label><label>Note (optional) <textarea maxlength="2000" rows="2"></textarea></label><button type="button" class="incident-download">Download report</button> <button type="button" class="incident-discard">Discard</button><p>No video clip is recorded. Predictions are not human labels. Nothing is uploaded.</p>`;
-  parent.append(button,panel); let report=null, urls=[];
-  const clear=()=>{for(const u of urls) URL.revokeObjectURL(u);urls=[];};
+  const button=document.createElement("button");button.textContent="Report incident (R)";button.type="button";
+  const panel=document.createElement("section");panel.className="incident-panel";panel.hidden=true;
+  panel.innerHTML=`<h2 tabindex="-1">Capture incident</h2><p class="incident-status" role="status" aria-live="polite"></p><div class="incident-preview"></div><fieldset hidden><legend>Optional context</legend><label>Issue <select><option value="">Unspecified</option><option value="missing_detection">Missing detection</option><option value="wrong_box_or_class">Wrong box or class</option><option value="overlay_timing">Overlay timing</option><option value="other">Other</option></select></label><label>Note <textarea maxlength="2000" rows="2"></textarea></label></fieldset><button type="button" class="incident-download" disabled>Download report</button> <button type="button" class="incident-discard">Discard</button><p>No video clip is recorded. Images and predictions need review before training. Nothing is uploaded.</p>`;
+  parent.append(button,panel);
+  let report=null,urls=[],busy=false,generation=0;
+  const viewerSession=globalThis.crypto?.randomUUID?.()??null;
+  const status=panel.querySelector(".incident-status"),heading=panel.querySelector("h2"),fields=panel.querySelector("fieldset"),download=panel.querySelector(".incident-download");
+  const clear=()=>{for(const u of urls)URL.revokeObjectURL(u);urls=[];};
   button.onclick=async()=>{
-    button.disabled=true; panel.hidden=false; panel.querySelector(".incident-status").textContent="Capturing on the next rendered frame…";
-    report=null;clear();panel.querySelector(".incident-preview").replaceChildren();panel.querySelector("select").value="";panel.querySelector("textarea").value="";
-    const download=panel.querySelector(".incident-download"); download.disabled=true;
+    if(busy)return;
+    // Keep an existing draft intact; the user explicitly discards it before replacing it.
+    if(report){panel.hidden=false;heading.focus();status.textContent="Your captured incident and notes are preserved. Download or discard it before capturing another.";return;}
+    busy=true;const gen=++generation;button.setAttribute("aria-disabled","true");panel.hidden=false;
+    heading.textContent="Capturing incident";heading.focus();fields.hidden=true;download.disabled=true;
+    status.textContent="Capturing on the next rendered frame. Keep this tab visible.";
+    clear();panel.querySelector(".incident-preview").replaceChildren();
     try {
-      report=await getCamera().capture(getContext()); const m=report.metadata;
-      panel.querySelector(".incident-status").textContent=`${m.camera} · ${m.captured_at} · ${m.detections.reason} · alignment delta ${m.timing.result_minus_video_ms ?? 'unavailable'} ms · AI ${m.ai_on?'on':'off'} · boxes ${m.layers.boxes?'on':'off'}, motion ${m.layers.motion?'on':'off'}`;
-      for(const [label,blob] of [["Clean frame",report.frame],["Overlay (separate coordinates)",report.overlay]]) if(blob){const fig=document.createElement("figure"),img=document.createElement("img"),cap=document.createElement("figcaption");img.src=URL.createObjectURL(blob);urls.push(img.src);img.alt=label;cap.textContent=label;fig.append(img,cap);panel.querySelector(".incident-preview").append(fig);}
-      download.disabled=false;
-    }catch(e){panel.querySelector(".incident-status").textContent="Capture unavailable: "+e.message;}finally{button.disabled=false;}
+      const context=()=>({...getContext(),viewerSession});
+      const captured=await getCamera().capture(context);
+      if(gen!==generation)return;
+      report=captured;const m=report.metadata;heading.textContent="Incident captured";status.textContent=describeCapture(m);
+      for(const [label,blob,info] of [["Clean frame",report.frame,m.frame],["Overlay · detection coordinates; not aligned to clean frame",report.overlay,m.overlay]]) if(blob){
+        const fig=document.createElement("figure"),img=document.createElement("img"),cap=document.createElement("figcaption");
+        img.src=URL.createObjectURL(blob);urls.push(img.src);img.alt=label;cap.textContent=`${label} — ${info.width} × ${info.height}`;fig.append(img,cap);panel.querySelector(".incident-preview").append(fig);
+      }
+      fields.hidden=false;download.disabled=false;
+    }catch(e){if(gen===generation){heading.textContent="Capture unavailable";status.textContent=e.message+". Keep the tab visible and try again.";}}
+    finally{if(gen===generation){busy=false;button.removeAttribute("aria-disabled");}}
   };
-  panel.querySelector(".incident-download").onclick=async()=>{if(!report)return;const b=panel.querySelector(".incident-download");b.disabled=true;try{const zip=await reportZip(report,{issue:panel.querySelector("select").value,note:panel.querySelector("textarea").value});const a=document.createElement("a"),u=URL.createObjectURL(zip);a.href=u;a.download="codec-incident-"+Date.now()+".zip";a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}catch(e){panel.querySelector(".incident-status").textContent="Download failed: "+e.message;}finally{b.disabled=false;}};
-  panel.querySelector(".incident-discard").onclick=()=>{report=null;clear();panel.hidden=true;};
-  addEventListener("keydown",e=>{if(e.key.toLowerCase()==="r"&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest?.("input,textarea,select,[contenteditable]")){e.preventDefault();if(!button.disabled)button.click();}});
+  download.onclick=async()=>{
+    if(!report||download.disabled)return;download.disabled=true;const gen=generation;
+    try{
+      const captured=report,zip=await reportZip(captured,{issue:panel.querySelector("select").value,note:panel.querySelector("textarea").value});
+      if(gen!==generation)return;
+      const a=document.createElement("a"),u=URL.createObjectURL(zip);a.href=u;
+      const camera=captured.metadata.camera.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,50);
+      a.download=`codec-incident-${camera}-${captured.metadata.captured_at.replace(/[:.]/g,'-')}.zip`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);
+      status.textContent="Report download requested. Review the archive before sharing or adding images to a training dataset.";
+    }catch(e){if(gen===generation)status.textContent="Download failed: "+e.message;}
+    finally{if(gen===generation)download.disabled=false;}
+  };
+  panel.querySelector(".incident-discard").onclick=()=>{generation++;busy=false;report=null;clear();panel.hidden=true;fields.hidden=true;download.disabled=true;panel.querySelector("select").value="";panel.querySelector("textarea").value="";button.removeAttribute("aria-disabled");button.focus();};
+  addEventListener("keydown",e=>{if(e.key.toLowerCase()==="r"&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest?.("input,textarea,select,[contenteditable]")){e.preventDefault();button.click();}});
 }

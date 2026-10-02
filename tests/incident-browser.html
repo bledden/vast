@@ -6,5 +6,5 @@ import {mountReporter,captureReport,chooseResult} from '../web/incident.mjs';
 const frame=document.createElement('canvas');frame.width=640;frame.height=360;const c=frame.getContext('2d');c.fillStyle='#35566b';c.fillRect(0,0,640,360);c.fillStyle='white';c.fillRect(260,160,120,70);
 const overlay=document.createElement('canvas');overlay.width=320;overlay.height=180;const o=overlay.getContext('2d');o.strokeStyle='red';o.lineWidth=3;o.strokeRect(130,80,60,35);
 const r={t:1000000,w:320,h:180,dets:[[130,80,190,115,'car',.8,'fresh']],regions:[],motion:[],stats:{frames:10}};
-mountReporter(document.getElementById('app'),()=>({capture(context){return new Promise(resolve=>requestAnimationFrame(()=>resolve(captureReport({choice:chooseResult([r],1010),results:[r],show:{boxes:true,motion:false,regions:false},wanted:true,...context},frame,overlay))))}}),()=>({camera:'synthetic-driveway',events:[]}));
+mountReporter(document.getElementById('app'),()=>({capture(context){return new Promise(resolve=>requestAnimationFrame(()=>resolve(captureReport({choice:chooseResult([r],1010),results:[r],show:{boxes:true,motion:false,regions:false},wanted:true,...(typeof context === "function" ? context() : context)},frame,overlay))))}}),()=>({camera:'synthetic-driveway',events:[]}));
 </script>

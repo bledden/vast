@@ -52,3 +52,40 @@ test('integration captures inside draw and does not add inference/subscription c
  assert.ok(!/fetch\(|subscribe\(|setAI\(|follow\(/.test(reporter));
  assert.ok(!reporter.includes('location.search'));
 });
+
+test('selection matches original viewer on unsorted and coerced timestamps',()=>{
+ const rows=[{t:30000},{t:10000},{t:20000}];
+ const original=ms=>{if(ms===undefined||!rows.length)return rows.at(-1);let best;for(const r of rows)if(r.t<=ms*1000+1000&&(!best||r.t>best.t))best=r;return best??rows.at(-1);};
+ for(const ms of [0,10,20,29,undefined,null,NaN,Infinity,-Infinity,'20',''])assert.equal(chooseResult(rows,ms).result,original(ms));
+ assert.equal(chooseResult(rows,'20').timestamp_type,'string');
+});
+test('AI off or absent result never exports default or stale overlay canvas',async()=>{
+ const i=input();i.wanted=false;i.choice=chooseResult([],10);
+ const r=await captureReport(i,null,{width:300,height:150});
+ assert.equal(r.overlay,null);assert.equal(r.metadata.overlay.reason,'no_detection_result');
+});
+test('Cosmos analyzing is not evidence of a Weave call; completed intervals get relation',()=>{
+ const i=input();i.events=[{id:1,state:'analyzing',start:1},{id:2,state:'done',start:9000,end:11000},{id:3,state:'done',start:50000,end:60000}];
+ const m=snapshotMetadata(i);
+ assert.ok(m.events.every(e=>e.trace.state==='unavailable'));
+ assert.equal(m.events.find(e=>e.id===2).relation,'overlaps_capture');
+ assert.equal(m.events.find(e=>e.id===3).relation,'recent_context_only');
+});
+test('training candidates never treat predictions or missing images as reviewed labels',async()=>{
+ const {trainingCandidate}=await import('../web/incident.mjs');
+ const m={...snapshotMetadata(input()),frame:{available:true},video_size:{width:200,height:100}};
+ const c=trainingCandidate(m,'abc');
+ assert.equal(c.image.file,'frame.png');assert.equal(c.eligible_for_training,false);
+ assert.equal(c.annotation.reviewed_boxes,null);assert.equal(c.annotation.confirmed_background,false);
+ assert.equal(c.predictions.coordinate_space,'detection_size');assert.equal(c.predictions.frame_mapping_verified,false);
+ assert.equal(c.provenance.suggested_split,null);assert.equal(c.provenance.source_recording_id,null);
+ assert.equal(c.image.sha256,'abc');assert.equal(c.annotation.class_schema,null);
+ const missing=trainingCandidate({...m,frame:{available:false}},null);
+ assert.equal(missing.image.file,null);assert.ok(missing.blockers.includes('clean_image_missing'));
+ assert.ok(missing.blockers.includes('image_hash_missing'));
+});
+test('status describes timing direction instead of raw machine codes',async()=>{
+ const {describeCapture}=await import('../web/incident.mjs');const m=snapshotMetadata(input());
+ m.timing.result_minus_video_ms=-10;assert.match(describeCapture(m),/10.0 ms before/);
+ m.timing.result_minus_video_ms=20;assert.match(describeCapture(m),/20.0 ms after/);
+});

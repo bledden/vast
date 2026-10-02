@@ -69,14 +69,19 @@ export function mountCamera(root, { url, name, ai = `${name}-ai`, show = { motio
   let wanted = true, dead = false, sub, wake, pendingCapture;
   cam.capture = (context) => new Promise((resolve, reject) => {
     if (dead || pendingCapture) { reject(new Error("Camera unavailable or capture pending")); return; }
-    const frozen = structuredClone(context);
+    const readContext = typeof context === "function" ? context : () => context;
+    const camera = readContext().camera;
     const timer = setTimeout(() => { if (pendingCapture?.reject === reject) pendingCapture = null; reject(new Error("No rendered frame available")); }, 2000);
-    pendingCapture = {context: frozen, resolve, reject, timer};
+    pendingCapture = {readContext, camera, resolve, reject, timer};
   });
   function finishCapture(choice) {
     if (!pendingCapture) return;
     const p = pendingCapture; pendingCapture = null; clearTimeout(p.timer);
-    try { captureReport({choice, results, show: cam.show, wanted, ...p.context}, watch.querySelector("canvas"), overlay).then(p.resolve,p.reject); }
+    try {
+      const context = p.readContext();
+      if (context.camera !== p.camera) throw new Error("Camera switched before capture");
+      captureReport({choice, results, show: cam.show, wanted, ...context}, watch.querySelector("canvas"), choice.result ? overlay : null).then(p.resolve,p.reject);
+    }
     catch(e) { p.reject(e); }
   }
   cam.setAI = (on) => {
