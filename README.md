@@ -56,8 +56,12 @@ Every-frame YOLO11 versus motion gating, on footage from the VAST corpus (`eval.
 | I-24 highway (constant traffic) | 100% | 13-15% | 100% |
 
 Quiet cameras are where this pays off, and quiet is what most security cameras are. Busy scenes
-always have motion, so gating saves little there. Live in the viewer, the neighborhood camera
-holds around 70% savings.
+always have motion, so gating saves little there.
+
+The live demo goes further, with two settings the table doesn't include: while motion continues it
+detects at most every 3rd frame (10 per second, boxes held in between), and a camera's AI runs only
+while someone subscribes to its `detections` track. Live, that reads about 80% saved on the
+driveway and about 70% on the busy street; recall at that stride hasn't been measured.
 
 Cosmos only runs on events: about 4 per 40 seconds of the neighborhood clip, at about 1.2s each,
 instead of describing every chunk of footage.
