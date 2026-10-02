@@ -11,10 +11,13 @@ segments joined in order, ready for ./camera.sh. Credentials come from the envir
 import argparse, json, os, re, subprocess, sys, urllib.parse, urllib.request
 from collections import defaultdict
 
+# Cloudflare in front of VSS rejects Python's default User-Agent (error 1010).
+UA = "codec-vision/1.0"
+
 
 def call(url, token=None, body=None):
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
-                                 headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})})
+                                 headers={"Content-Type": "application/json", "User-Agent": UA, **({"Authorization": f"Bearer {token}"} if token else {})})
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.read()
 

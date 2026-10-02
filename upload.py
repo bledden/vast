@@ -8,10 +8,13 @@ Each clip is uploaded once; a .uploaded marker records its object key.
 """
 import argparse, getpass, glob, json, os, time, uuid, urllib.request
 
+# Cloudflare in front of VSS rejects Python's default User-Agent (error 1010).
+UA = "codec-vision/1.0"
+
 
 def login(url, user, password):
     req = urllib.request.Request(f"{url}/api/v1/auth/login", data=json.dumps({"username": user, "password": password}).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "User-Agent": UA})
     return json.load(urllib.request.urlopen(req, timeout=30))["access_token"]
 
 
@@ -29,7 +32,7 @@ def upload(url, token, path, meta):
     body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{os.path.basename(path)}\"\r\n"
              "Content-Type: video/mp4\r\n\r\n").encode() + open(path, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(f"{url}/api/v1/videos/upload", data=body, headers={
-        "Authorization": f"Bearer {token}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
+        "Authorization": f"Bearer {token}", "Content-Type": f"multipart/form-data; boundary={boundary}", "User-Agent": UA})
     return json.load(urllib.request.urlopen(req, timeout=120))
 
 
