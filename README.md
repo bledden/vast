@@ -8,6 +8,34 @@ that data straight from the bitstream and only spend GPU time on segments and re
 
 ![Motion vectors and frame sizes read from the H.264 stream](docs/overlay.gif)
 
+## Live demo
+
+A recorded clip stands in for a live camera. Everything runs locally.
+
+```sh
+pip install -r requirements.txt moq-rs     # plus moq and moq-relay on PATH
+moq-relay relay.toml                       # local relay on :4443
+./camera.sh scene.mp4 cam                  # loop a clip into MoQ in real time
+python worker.py --broadcast cam           # publishes cam-ai/detections
+python -m http.server -d web 8077          # open http://localhost:8077
+```
+
+`./scene.sh` builds a synthetic test clip; any H.264 clip without B-frames works.
+
+The worker decodes the camera, reads the encoder's motion vectors, and only sends moving
+regions to YOLO. Results go out as a separate `detections` track, timestamped with the video
+frame they belong to, so the viewer draws them in sync. Boxes are colored by how they were
+produced: re-detected, cached (no motion under them), or moved by the motion vectors alone.
+
+## Offline comparison
+
+```sh
+python eval.py clip.mp4 --render overlay.mp4 [--wandb]
+```
+
+Runs every-frame, frame-gated and region-gated detection on the same frames and reports
+detector time and recall against every-frame.
+
 ## Scripts
 
 ```sh

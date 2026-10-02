@@ -1,0 +1,14 @@
+# Local relay for the demo: self-signed cert, anonymous access.
+# Clients use http://localhost:4443 and pin the cert via /certificate.sha256.
+[log]
+level = "info"
+
+[listen]
+bind = "[::]:4443"
+tls.generate = ["localhost"]
+
+[web.http]
+listen = "[::]:4443"
+
+[auth]
+public = "**"
