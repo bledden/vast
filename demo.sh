@@ -18,6 +18,11 @@ cams=(
 for cam in "${cams[@]}"; do
   [ -f "${cam#*:}" ] || { echo "missing ${cam#*:}: see Footage in README.md" >&2; exit 1; }
 done
+# MOQ / MOQ_RELAY pick the binaries when the right ones aren't first on PATH (relay.toml needs 0.16+).
+export MOQ=${MOQ:-moq}
+for bin in "$MOQ" "${MOQ_RELAY:-moq-relay}"; do
+  command -v "$bin" >/dev/null || { echo "$bin not found; set MOQ / MOQ_RELAY" >&2; exit 1; }
+done
 
 # relay.toml is written for moq-relay 0.16+; MOQ_RELAY picks the binary if an older one is first on PATH.
 "${MOQ_RELAY:-moq-relay}" relay.toml >logs/relay.log 2>&1 &

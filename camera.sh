@@ -8,4 +8,4 @@ name=${2:-cam}
 relay=${3:-http://localhost:4443}
 ffmpeg -hide_banner -loglevel error -stream_loop -1 -re -i "$clip" -an -c copy \
   -f mpegts -pes_payload_size 0 -muxdelay 0 - \
-  | moq --connect "$relay" --broadcast "$name" import ts
+  | "${MOQ:-moq}" --connect "$relay" --broadcast "$name" import ts
