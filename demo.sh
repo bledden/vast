@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# The whole demo in one command: local relay, four looping "cameras", the AI worker, the viewer.
-# Open http://localhost:8077 in Chrome. Ctrl-C stops everything. Logs go to logs/.
+# The whole demo in one command: four looping "cameras", the AI worker, and (locally) a relay and
+# the viewer. Ctrl-C stops everything. Logs go to logs/.
+#
+#   ./demo.sh                                    local relay; open http://localhost:8077 in Chrome
+#   RELAY_URL='https://cdn.moq.pro/<project>?jwt=<token>' PREFIX=codec-motion/ ./demo.sh
+#                                                publish to a remote relay instead (see deploy.sh)
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p logs
 trap 'kill 0' EXIT
+fail() { echo "demo: $*" >&2; exit 1; }
 
 # Prefer the long clips fetch.py joins from consecutive chunks; fall back to single chunks.
 pick() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return; }; done; echo "$1"; }
@@ -15,7 +20,6 @@ cams=(
   "street:$(pick footage/sf4.mp4 footage/sf4_0009.mp4)"
 )
 
-fail() { echo "demo: $*" >&2; exit 1; }
 [ -x .venv/bin/python ] || fail "no .venv: run 'uv venv --python 3.12 && uv pip install -r requirements.txt'"
 command -v ffmpeg >/dev/null || fail "ffmpeg not found (brew install ffmpeg)"
 
@@ -32,28 +36,34 @@ done
 
 # MOQ / MOQ_RELAY pick the binaries when the right ones aren't first on PATH.
 export MOQ=${MOQ:-moq}
-MOQ_RELAY=${MOQ_RELAY:-moq-relay}
-for bin in "$MOQ" "$MOQ_RELAY"; do
-  command -v "$bin" >/dev/null || fail "$bin not found: cargo install moq-relay@0.16.0 moq-cli@0.13.0 (or set MOQ / MOQ_RELAY)"
-done
-relay_version=$("$MOQ_RELAY" --version | awk '{print $2}')
-[ "$(printf '0.16.0\n%s\n' "$relay_version" | sort -V | head -1)" = "0.16.0" ] ||
-  fail "moq-relay $relay_version is too old for relay.toml (needs 0.16+); set MOQ_RELAY to a newer one"
-curl -s -o /dev/null http://localhost:4443/ && fail "port 4443 is in use (another relay or demo running?)"
-curl -s -o /dev/null http://localhost:8077/ && fail "port 8077 is in use (another demo running?)"
+command -v "$MOQ" >/dev/null || fail "$MOQ not found: cargo install moq-cli@0.13.0 (or set MOQ)"
+prefix=${PREFIX:-}
 
-"$MOQ_RELAY" relay.toml >logs/relay.log 2>&1 &
-for _ in $(seq 50); do curl -sf http://localhost:4443/certificate.sha256 >/dev/null && break; sleep 0.2; done
-curl -sf http://localhost:4443/certificate.sha256 >/dev/null || { echo "relay failed to start; see logs/relay.log" >&2; tail -5 logs/relay.log >&2; exit 1; }
+if [ -n "${RELAY_URL:-}" ]; then
+  relay=$RELAY_URL
+  echo "demo: publishing to ${relay%%\?*} as ${prefix}<camera>"
+else
+  relay=http://localhost:4443
+  MOQ_RELAY=${MOQ_RELAY:-moq-relay}
+  command -v "$MOQ_RELAY" >/dev/null || fail "$MOQ_RELAY not found: cargo install moq-relay@0.16.0 (or set MOQ_RELAY)"
+  relay_version=$("$MOQ_RELAY" --version | awk '{print $2}')
+  [ "$(printf '0.16.0\n%s\n' "$relay_version" | sort -V | head -1)" = "0.16.0" ] ||
+    fail "moq-relay $relay_version is too old for relay.toml (needs 0.16+); set MOQ_RELAY to a newer one"
+  curl -s -o /dev/null http://localhost:4443/ && fail "port 4443 is in use (another relay or demo running?)"
+  curl -s -o /dev/null http://localhost:8077/ && fail "port 8077 is in use (another demo running?)"
+
+  "$MOQ_RELAY" relay.toml >logs/relay.log 2>&1 &
+  for _ in $(seq 50); do curl -sf http://localhost:4443/certificate.sha256 >/dev/null && break; sleep 0.2; done
+  curl -sf http://localhost:4443/certificate.sha256 >/dev/null || { tail -5 logs/relay.log >&2; fail "relay failed to start; see logs/relay.log"; }
+  .venv/bin/python -m http.server -d web 8077 --bind :: >logs/web.log 2>&1 &
+  echo "viewer: http://localhost:8077"
+fi
 
 names=()
 for cam in "${cams[@]}"; do
   name=${cam%%:*}
-  ./camera.sh "${cam#*:}" "$name" >"logs/$name.log" 2>&1 &
-  names+=("$name")
+  ./camera.sh "${cam#*:}" "$prefix$name" "$relay" >"logs/$name.log" 2>&1 &
+  names+=("$prefix$name")
 done
 
-python3 -m http.server -d web 8077 --bind :: >logs/web.log 2>&1 &
-echo "viewer: http://localhost:8077"
-
-.venv/bin/python -u worker.py --broadcast "${names[@]}" "$@" 2>&1 | grep --line-buffered -v '^objc'
+.venv/bin/python -u worker.py --url "$relay" --broadcast "${names[@]}" "$@" 2>&1 | grep --line-buffered -v '^objc'

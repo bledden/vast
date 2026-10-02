@@ -1,0 +1,6 @@
+// The hosted viewer: static files only (deploy.sh builds dist/ from web/ with the relay config).
+{
+  "name": "codec-motion",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist" }
+}

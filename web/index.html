@@ -65,9 +65,12 @@
 
 <script type="module">
   import { mountCamera, follow, renderEvents, closeAll } from "./camera.js";
+  import config from "./config.js";
 
   const params = new URLSearchParams(location.search);
-  const url = params.get("url") ?? "http://localhost:4443";
+  // config.js points at the relay: localhost for ./demo.sh, the CDN for the hosted copy (deploy.sh).
+  const url = params.get("url") ?? config.url;
+  const prefix = params.get("prefix") ?? config.prefix; // broadcast names on the relay are prefix + camera
   const cams = (params.get("cams") ?? "driveway,night,warehouse,street").split(",");
   let selected = params.get("name") ?? cams[0];
   const app = document.getElementById("app");
@@ -95,8 +98,8 @@
     if (name === selected) tab.classList.add("on");
     tabs.append(tab);
     state[name] = { tab, stats: undefined, events: [] };
-    follow(url, `${name}-ai`, "stats", (text) => { state[name].stats = JSON.parse(text); }, 2).catch(console.error);
-    follow(url, `${name}-ai`, "events", (text) => {
+    follow(url, `${prefix}${name}-ai`, "stats", (text) => { state[name].stats = JSON.parse(text); }, 2).catch(console.error);
+    follow(url, `${prefix}${name}-ai`, "events", (text) => {
       state[name].events = JSON.parse(text).filter((e) => e.state !== "quiet");
       flagAlerts(name);
       if (name === selected) updateBanner();
@@ -107,7 +110,7 @@
   const stage = $(`<div></div>`);
   app.append(stage);
   const banner = $(`<div class="banner"></div>`);
-  let cam = mountCamera(stage, { url, name: selected });
+  let cam = mountCamera(stage, { url, name: prefix + selected });
   stage.append(banner);
 
   // Switch in place: the old camera's detections subscription closes (its models stop), the new
@@ -117,7 +120,7 @@
     const show = cam.show;
     cam.destroy();
     selected = name;
-    cam = mountCamera(stage, { url, name, show });
+    cam = mountCamera(stage, { url, name: prefix + name, show });
     stage.append(banner);
     banner.classList.remove("on");
     updateBanner();
