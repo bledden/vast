@@ -3,3 +3,5 @@ numpy
 scipy
 pillow
 boto3
+ultralytics
+wandb
