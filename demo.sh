@@ -19,8 +19,10 @@ for cam in "${cams[@]}"; do
   [ -f "${cam#*:}" ] || { echo "missing ${cam#*:}: see Footage in README.md" >&2; exit 1; }
 done
 
-moq-relay relay.toml >logs/relay.log 2>&1 &
-until curl -sf http://localhost:4443/certificate.sha256 >/dev/null; do sleep 0.2; done
+# relay.toml is written for moq-relay 0.16+; MOQ_RELAY picks the binary if an older one is first on PATH.
+"${MOQ_RELAY:-moq-relay}" relay.toml >logs/relay.log 2>&1 &
+for _ in $(seq 50); do curl -sf http://localhost:4443/certificate.sha256 >/dev/null && break; sleep 0.2; done
+curl -sf http://localhost:4443/certificate.sha256 >/dev/null || { echo "relay failed to start; see logs/relay.log" >&2; tail -5 logs/relay.log >&2; exit 1; }
 
 names=()
 for cam in "${cams[@]}"; do
