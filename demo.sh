@@ -13,6 +13,10 @@ cams=(
   "street:footage/sf4_0009.mp4"
 )
 
+for cam in "${cams[@]}"; do
+  [ -f "${cam#*:}" ] || { echo "missing ${cam#*:}: see Footage in README.md" >&2; exit 1; }
+done
+
 moq-relay relay.toml >logs/relay.log 2>&1 &
 until curl -sf http://localhost:4443/certificate.sha256 >/dev/null; do sleep 0.2; done
 

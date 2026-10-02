@@ -81,16 +81,34 @@ Everything runs locally on a laptop (tested on an M-series Mac).
 
 ```sh
 uv venv && uv pip install -r requirements.txt     # plus moq and moq-relay on PATH
-moq-relay relay.toml                              # local relay on :4443
-./camera.sh footage/clip.mp4 cam                  # loop a clip into MoQ as a live camera
-python worker.py --broadcast cam                  # publishes cam-ai/detections and cam-ai/events
-python -m http.server -d web 8077 --bind ::       # open http://localhost:8077 in Chrome
+./demo.sh                                         # relay + 4 looping cameras + worker + viewer
+                                                  # open http://localhost:8077 in Chrome
 ```
 
 - `./prep.sh <dir> footage` re-encodes clips the way a simple camera sends them (H.264, no B-frames).
 - Put `GPU_BEARER_TOKEN` (Cosmos endpoint) and `WANDB_API_KEY` in a git-ignored `.env`.
 - `python worker.py --save-events` writes described event clips to `events/`, and
   `VSS_USERNAME=... python upload.py --watch` pushes them into VAST VSS for search.
+
+## Footage
+
+The demo clips come from the VAST Builders Challenge corpus and aren't redistributed here. With
+access to a team's VSS instance, download these chunks from its Explore page (or run
+`python fetch.py`), then re-encode them the way a simple camera sends video:
+
+| Camera | Source chunk |
+|---|---|
+| `driveway` | `neighborhood_20260901_chunk_0007.mp4` |
+| `night` | `neighborhood_20260902_chunk_0021.mp4` |
+| `warehouse` | `2025_test_Warehouse_017_Camera_01_chunk_0007.mp4` |
+| `street` | `sf4_chunk_0009.mp4` (HEVC; `prep.sh` converts it to H.264) |
+
+```sh
+./prep.sh ~/Downloads/vss footage     # H.264, no B-frames, 2s GOP
+```
+
+No corpus access? `./scene.sh footage/scene.mp4` builds a synthetic camera from the sample images
+Ultralytics ships, and `./camera.sh footage/scene.mp4 cam` streams it.
 
 ## Scripts
 
