@@ -36,7 +36,7 @@ class Worker:
     def __init__(self, engine: Engine, names, agent: EventAgent):
         self.engine, self.names, self.agent = engine, names, agent
         self.started = []  # event-start messages produced by the last call
-        self.frames = self.inferred = 0
+        self.frames = self.inferred = self.held = 0
         self.ms = 0.0
         self.full_ms = []  # measured full-frame latencies, to price the every-frame baseline honestly
         self.restart()
@@ -61,7 +61,12 @@ class Worker:
             behind = (now - self.clock[0]) - (ts - self.clock[1]) / 1e6
             if behind < -1:  # we got ahead (paused source): re-anchor
                 self.clock = (now, ts)
-            step = self.engine.step(img, g, hold=behind > 0.3)
+            hold = behind > 0.3
+            step = self.engine.step(img, g, hold=hold)
+            if hold and not step.calls:
+                # Skipped only to keep up with real time: charge it as if YOLO ran, so falling
+                # behind never shows up as savings. (Conservative: some had no motion anyway.)
+                self.held += 1
             # An event is motion on a detected object; swaying trees and flicker don't count.
             movers = []
             if step.active is not None and step.active.any():
@@ -91,7 +96,7 @@ class Worker:
         return out
 
     def stats(self) -> dict:
-        return {"frames": self.frames, "inferred": self.inferred, "ms": round(self.ms),
+        return {"frames": self.frames, "inferred": self.inferred, "held": self.held, "ms": round(self.ms),
                 "full_ms": round(float(np.median(self.full_ms)), 1) if self.full_ms else None}
 
 
@@ -165,7 +170,7 @@ def main():
     p.add_argument("--broadcast", nargs="+", default=["cam"])
     p.add_argument("--mode", default="frame", choices=["region", "frame", "every"])
     p.add_argument("--min-cluster", type=int, default=8)
-    p.add_argument("--stride", type=int, default=3, help="while motion continues, detect at most every Nth frame")
+    p.add_argument("--stride", type=int, default=1, help="while motion continues, detect at most every Nth frame")
     p.add_argument("--weights", default="yolo11n.pt")
     p.add_argument("--save-events", action="store_true", help="write described event clips to events/ for upload.py")
     p.add_argument("--ask-port", type=int, default=8078, help="HTTP port for natural-language questions over the event log")

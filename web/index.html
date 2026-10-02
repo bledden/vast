@@ -203,8 +203,9 @@
       ai.classList.toggle("live", !!s?.watched);
       if (!s?.full_ms) continue;
       const e = s.frames * s.full_ms;
-      ms += s.ms; every += e; frames += s.frames; inferred += s.inferred;
-      tab.querySelector(".saved").textContent = `${pct(100 * (1 - s.ms / e))} saved`;
+      const used = s.ms + (s.held ?? 0) * s.full_ms; // frames skipped to keep up count as full cost
+      ms += used; every += e; frames += s.frames; inferred += s.inferred + (s.held ?? 0);
+      tab.querySelector(".saved").textContent = `${pct(100 * (1 - used / e))} saved`;
     }
     if (every) {
       document.getElementById("saved").textContent = pct(100 * (1 - ms / every));
