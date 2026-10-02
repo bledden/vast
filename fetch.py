@@ -2,7 +2,7 @@
 """Build long camera clips from a VSS instance by joining consecutive chunks of one source video.
 
     VSS_USERNAME=team-47 python fetch.py --list                       # source videos and their chunks
-    VSS_USERNAME=team-47 python fetch.py neighborhood_20260901 --chunks 0-11
+    VSS_USERNAME=team-47 python fetch.py neighborhood_20260901:0-7 2025_test_Warehouse_017_Camera_01:0-9
 
 Chunks are the uploaded pieces of a long recording (name_chunk_0000, _0001, ...). This downloads
 the requested range through the backend's stream endpoint (falling back to each chunk's segments),
@@ -67,9 +67,8 @@ def download(backend, token, uri, path):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("video", nargs="?", help="source video name, as printed by --list")
+    p.add_argument("videos", nargs="*", help="name[:first-last] per source video, as printed by --list")
     p.add_argument("--list", action="store_true")
-    p.add_argument("--chunks", help="range like 0-11 (default: all)")
     p.add_argument("--out", default="footage")
     args = p.parse_args()
 
@@ -79,48 +78,52 @@ def main():
     token = json.loads(call(f"{backend}/api/v1/auth/login", body={"username": user, "password": password}))["access_token"]
     videos = catalog(backend, token)
 
-    if args.list or not args.video:
+    if args.list or not args.videos:
         for name, chunks in sorted(videos.items()):
             nums = sorted(chunks)
             whole = sum(1 for c in chunks.values() if c["chunk"])
             print(f"{name:60} chunks {nums[0]:>4}-{nums[-1]:<4} ({len(nums)} indexed, {whole} with a chunk URI)")
         return
+    for spec in args.videos:
+        name, _, rng = spec.partition(":")
+        build(backend, token, videos, name, rng, args.out)
 
-    chunks = videos.get(args.video)
+
+def build(backend, token, videos, name, rng, out_dir):
+    chunks = videos.get(name)
     if not chunks:
-        sys.exit(f"no chunks for {args.video!r}; run --list")
+        sys.exit(f"no chunks for {name!r}; run --list")
     nums = sorted(chunks)
-    if args.chunks:
-        lo, hi = map(int, args.chunks.split("-"))
+    if rng:
+        lo, hi = map(int, rng.split("-"))
         nums = [n for n in nums if lo <= n <= hi]
     gaps = [n for n in range(nums[0], nums[-1] + 1) if n not in chunks]
     if gaps:
         print(f"warning: chunks {gaps} aren't indexed; the joined clip jumps there", file=sys.stderr)
 
-    os.makedirs(args.out, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         files = []
         for n in nums:
             c = chunks[n]
-            parts = [c["chunk"]] if c["chunk"] else sorted(c["segments"])
-            for i, uri in enumerate(parts):
-                path = os.path.join(tmp, f"{n:05d}_{i:03d}.mp4")
-                try:
-                    download(backend, token, uri, path)
-                except urllib.error.HTTPError as err:
-                    if uri != c["chunk"] or not c["segments"]:
-                        raise
-                    print(f"chunk {n}: stream refused ({err.code}); using its {len(c['segments'])} segments")
-                    for j, seg in enumerate(sorted(c["segments"])):
-                        segpath = os.path.join(tmp, f"{n:05d}_{j:03d}.mp4")
-                        download(backend, token, seg, segpath)
-                        files.append(segpath)
-                    break
+            path = os.path.join(tmp, f"{n:05d}_000.mp4")
+            try:
+                if not c["chunk"]:
+                    raise LookupError("no chunk URI")
+                download(backend, token, c["chunk"], path)
                 files.append(path)
-            print(f"chunk {n}: {len(parts)} file(s)")
+            except (urllib.error.HTTPError, LookupError) as err:
+                if not c["segments"]:
+                    raise
+                print(f"{name} chunk {n}: whole chunk unavailable ({err}); using its {len(c['segments'])} segments")
+                for j, seg in enumerate(sorted(c["segments"])):
+                    segpath = os.path.join(tmp, f"{n:05d}_{j:03d}.mp4")
+                    download(backend, token, seg, segpath)
+                    files.append(segpath)
+            print(f"{name} chunk {n}: downloaded")
         with open(os.path.join(tmp, "list.txt"), "w") as f:
             f.writelines(f"file '{x}'\n" for x in files)
-        out = os.path.join(args.out, f"{args.video}.mp4")
+        out = os.path.join(out_dir, f"{name}.mp4")
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
                         "-i", os.path.join(tmp, "list.txt"), "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                         "-bf", "0", "-g", "60", "-vf", "fps=30", out], check=True)
