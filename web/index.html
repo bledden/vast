@@ -40,11 +40,6 @@
   .tab .saved { color: var(--accent); font-variant-numeric: tabular-nums; }
   .tab .ai { color: var(--muted); font-size: 12px; }
   .tab .ai.live { color: var(--warn); }
-  .ask { display: flex; gap: 8px; }
-  .ask input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; }
-  .ask button { background: var(--accent); color: #000; border: 0; border-radius: 8px; padding: 0 16px; font-weight: 600; cursor: pointer; }
-  .answer { background: var(--panel); border-radius: 8px; padding: 10px 14px; border-left: 4px solid var(--accent); display: none; }
-  .answer.on { display: block; }
 
   .events { display: grid; gap: 8px; }
   .event { background: var(--panel); border-radius: 8px; padding: 8px 12px; border-left: 4px solid var(--line); }
@@ -70,8 +65,6 @@
   const url = params.get("url") ?? "http://localhost:4443";
   const cams = (params.get("cams") ?? "driveway,night,warehouse,street").split(",");
   let selected = params.get("name") ?? cams[0];
-  const host = location.hostname.includes(":") ? `[${location.hostname}]` : location.hostname;
-  const askUrl = `http://${host}:8078/ask`;
   const app = document.getElementById("app");
   const $ = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
   const pct = (x) => `${Math.max(0, Math.round(x))}%`;
@@ -134,24 +127,8 @@
     <span class="legend"><i style="background:#ff3b5c"></i>re-detected<i style="background:#5ac85a"></i>cached</span></div>`);
   toggles.querySelectorAll("input[data-k]").forEach((i) => (i.onchange = () => (cam.show[i.dataset.k] = i.checked)));
   toggles.querySelector("#ai").onchange = (e) => cam.setAI(e.target.checked);
-  const ask = $(`<form class="ask"><input id="q" placeholder="Ask the cameras: did anyone walk by? which camera saw a truck?" autocomplete="off"><button>Ask</button></form>`);
-  const answer = $(`<div class="answer"></div>`);
-  ask.onsubmit = async (e) => {
-    e.preventDefault();
-    const q = ask.querySelector("#q").value.trim();
-    if (!q) return;
-    answer.className = "answer on";
-    answer.textContent = "Thinking...";
-    try {
-      const res = await fetch(`${askUrl}?q=${encodeURIComponent(q)}`).then((r) => r.json());
-      answer.textContent = res.answer ?? `Error: ${res.error}`;
-    } catch (err) {
-      answer.textContent = `Ask service unreachable (${err.message})`;
-    }
-  };
-
   const feed = $(`<div class="events"></div>`);
-  app.append(toggles, ask, answer, $(`<h2>Events <small>all cameras, described by NVIDIA Cosmos only when an object moved</small></h2>`), feed);
+  app.append(toggles, $(`<h2>Events <small>all cameras, described by NVIDIA Cosmos only when an object moved</small></h2>`), feed);
   renderEvents(feed, []);
 
   const seen = new Map(); // "cam/id" -> when this page first saw the event

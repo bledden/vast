@@ -2,7 +2,7 @@
 """Live worker: subscribe to cameras over MoQ, decide per frame what to send to YOLO using the
 codec's motion vectors, and publish `detections` and `events` tracks on `<camera>-ai`.
 
-    python worker.py --broadcast driveway warehouse ... [--mode frame|region|every] [--ask-port 8078]
+    python worker.py --broadcast driveway warehouse ... [--mode frame|region|every]
 
 One process serves every camera and shares one detector, the way a server would. A camera's AI only
 runs while someone subscribes to its `detections` track (MoQ tells the publisher); otherwise the
@@ -29,7 +29,6 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), ".env")):
             os.environ.setdefault(k, v.strip().strip('"'))
 
 from agent import EventAgent  # noqa: E402  (reads the environment at import)
-import ask  # noqa: E402
 
 
 class Worker:
@@ -148,8 +147,6 @@ async def camera(client, args, det: Detector, name: str):
                         ev = agent.done.get()
                         events[ev["id"]] = ev
                         changed = True
-                        if ev["state"] != "quiet":
-                            ask.record(name, ev)
                         print(f"{name}: event {ev['id']} [{ev['state']}] {ev['labels']}: {ev['summary']} ({ev['ms']} ms)")
                     if changed:
                         recent = sorted(events.values(), key=lambda e: e["id"])[-10:]
@@ -165,7 +162,6 @@ async def camera(client, args, det: Detector, name: str):
 
 async def run(args):
     det = Detector(args.weights)
-    ask.serve(args.ask_port)
     async with moq.connect(args.url) as client:
         await asyncio.gather(*(camera(client, args, det, name) for name in args.broadcast))
 
@@ -179,7 +175,6 @@ def main():
     p.add_argument("--stride", type=int, default=1, help="while motion continues, detect at most every Nth frame")
     p.add_argument("--weights", default="yolo11n.pt")
     p.add_argument("--save-events", action="store_true", help="write described event clips to events/ for upload.py")
-    p.add_argument("--ask-port", type=int, default=8078, help="HTTP port for natural-language questions over the event log")
     asyncio.run(run(p.parse_args()))
 
 
