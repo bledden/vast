@@ -19,6 +19,7 @@ import av
 import moq
 import numpy as np
 
+import codecview
 from engine import Detector, Engine, grid
 
 # Credentials live in a git-ignored .env next to this file; never printed.
@@ -36,6 +37,8 @@ class Worker:
     def __init__(self, engine: Engine, names, agent: EventAgent):
         self.engine, self.names, self.agent = engine, names, agent
         self.started = []  # event-start messages produced by the last call
+        self.codec_view = False  # render the codec view this frame (someone subscribes to it)
+        self.rendered = []  # (timestamp, RGBA bytes) codec-view frames produced by the last call
         self.frames = self.inferred = self.held = 0
         self.ms = 0.0
         self.full_ms = []  # measured full-frame latencies, to price the every-frame baseline honestly
@@ -82,6 +85,8 @@ class Worker:
             self.ms += step.ms
             if step.full:
                 self.full_ms.append(step.ms)
+            if self.codec_view:
+                self.rendered.append((ts, codecview.render(img, g, step, self.names)))
             motion = []
             if g is not None and step.active is not None:
                 ys, xs = np.nonzero(step.active & g.moved)
@@ -107,6 +112,24 @@ async def camera(client, args, det: Detector, name: str):
     stats_track = out.publish_track("stats")
     demand = track.demand()
     out.announce()
+    # The codec view: what the encoder saw, as its own video broadcast any MoQ player can watch.
+    cv_out = client.create_broadcast(f"{name}-codec")
+    cv_video = cv_out.encode_video(
+        moq.VideoEncoderInput(format=moq.VideoPixelFormat.RGBA, width=codecview.W, height=codecview.H, framerate=30),
+        moq.VideoEncoderOutput(codec=moq.VideoCodec.H264, gop=60, bitrate=2_500_000, kind=moq.VideoEncoderKind.AUTO()))
+    cv_out.announce()
+    cv_demand = cv_video.demand()
+
+    def wanted():
+        return demand.is_used() or cv_demand.is_used()
+
+    async def until_wanted():
+        if wanted():
+            return
+        waits = {asyncio.ensure_future(demand.used()), asyncio.ensure_future(cv_demand.used())}
+        _, pending = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
+        for w in pending:
+            w.cancel()
     agent = EventAgent(camera=name, save=args.save_events)
     events = {}  # id -> latest state; published as a snapshot so late viewers see history
     print(f"{name}: publishing {name}-ai (mode={args.mode}, cosmos={agent.model or 'disabled'})")
@@ -117,9 +140,9 @@ async def camera(client, args, det: Detector, name: str):
         stats_track.write_frame(json.dumps({**worker.stats(), "watched": watched}).encode(), ts)
 
     while True:
-        # Nobody subscribed to detections: run no model and don't even pull the camera's video.
+        # Nobody subscribed to detections or the codec view: run no model, don't even pull the video.
         publish_stats(0, False)
-        await demand.used()
+        await until_wanted()
         print(f"{name}: watched; starting AI")
         try:
             src = await client.announced_broadcast(name)
@@ -129,11 +152,15 @@ async def camera(client, args, det: Detector, name: str):
             media = await src.subscribe_media(video, cat.video[video])
             async with media:
                 async for f in media:
-                    if not demand.is_used():  # last viewer left: stop the models, unsubscribe from the camera
+                    if not wanted():  # last viewer left: stop the models, unsubscribe from the camera
                         print(f"{name}: unwatched; stopping AI")
                         break
+                    worker.codec_view = cv_demand.is_used()
                     for msg in await asyncio.to_thread(worker.process, bytes(f.payload), f.timestamp_us):
                         track.write_frame(msg, f.timestamp_us)
+                    for ts, rgba in worker.rendered:
+                        cv_video.write(moq.VideoFrame(timestamp_us=ts, data=rgba))
+                    worker.rendered.clear()
                     changed = bool(worker.started)
                     for ev in worker.started:
                         events[ev["id"]] = ev

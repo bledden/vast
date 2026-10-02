@@ -39,6 +39,10 @@ camera (H.264) --MoQ--> relay --> worker -----------------------> cam-ai/detecti
 - **Transport:** [MoQ](https://moq.dev) (Media over QUIC). The camera publishes once; the video,
   the detections and the events are separate tracks that any number of viewers or agents subscribe
   to. An agent can follow the tiny `events` track without ever pulling video.
+- **Codec view:** the worker also renders every motion vector the encoder produced (faint), the
+  motion that counted (bright, with arrows) and the YOLO boxes into its own video broadcast,
+  `<camera>-codec`, encoded with moq's native encoder. It's in sync by construction, plays in any MoQ
+  player, and is only rendered while someone subscribes.
 - **Detections are data, not burned-in pixels.** Each `detections` frame carries the timestamp of
   the video frame it belongs to, so the viewer draws boxes in sync with what is on screen.
 
@@ -119,6 +123,7 @@ Ultralytics ships, and `./camera.sh footage/scene.mp4 cam` streams it.
 |---|---|
 | `worker.py` | Live: subscribe over MoQ, gate YOLO on codec motion, publish detections and events |
 | `engine.py` | Motion grid from codec vectors, detection cache, the every/frame/region modes |
+| `codecview.py` | Renders the codec view frame: all vectors, counted motion, boxes |
 | `agent.py` | Groups motion into events, describes them with Cosmos (traced in Weave) |
 | `web/index.html` | Viewer: MoQ player, synced overlay, cost panel, event feed |
 | `eval.py` | Offline: every-frame vs. gated on the same frames; time, recall, precision |

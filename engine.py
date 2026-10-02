@@ -24,7 +24,8 @@ MB = 16  # H.264 macroblock size
 class Grid:
     """Per-macroblock motion for one P-frame."""
     dirty: np.ndarray  # bool (mbh, mbw): moved, or intra-coded (new content)
-    moved: np.ndarray  # bool (mbh, mbw): has a non-zero vector
+    moved: np.ndarray  # bool (mbh, mbw): moved at least min_motion px
+    raw: np.ndarray  # bool (mbh, mbw): any non-zero vector at all, noise included (for display)
     vec: np.ndarray  # float (mbh, mbw, 2): mean motion (dx, dy) in pixels
 
 
@@ -60,7 +61,10 @@ def grid(frame, width: int, height: int, min_motion: float = 2.5) -> Grid | None
     moved = np.zeros((mbh, mbw), bool)
     nz = np.hypot(dx, dy) >= min_motion
     moved[y[nz], x[nz]] = True
-    return Grid(dirty=moved | ~seen, moved=moved, vec=vec)
+    raw = np.zeros((mbh, mbw), bool)
+    anyv = (dx != 0) | (dy != 0)
+    raw[y[anyv], x[anyv]] = True
+    return Grid(dirty=moved | ~seen, moved=moved, raw=raw, vec=vec)
 
 
 @dataclass
