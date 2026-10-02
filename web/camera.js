@@ -6,13 +6,20 @@ const COLORS = { fresh: "#ff3b5c", cached: "#5ac85a", shifted: "#ffc800" };
 
 // One connection per relay, shared by every subscription on the page.
 const origins = new Map();
+const connections = [];
 function origin(url) {
   if (!origins.has(url)) {
     const o = new Moq.Origin.Producer();
-    Moq.Connection.connect({ url: new URL(url), consume: o }).catch((err) => console.error("connect", err));
+    connections.push(Moq.Connection.connect({ url: new URL(url), consume: o }).catch((err) => console.error("connect", err)));
     origins.set(url, o);
   }
   return origins.get(url);
+}
+
+// Close connections on the way out, so the relay sees every unsubscribe now instead of after the
+// QUIC idle timeout (which would keep the worker's models running for another ~30s).
+export function closeAll() {
+  for (const c of connections) c.then((conn) => conn?.close());
 }
 
 // Calls onText for every frame of a raw track. Resubscribes whenever the subscription ends or
@@ -57,16 +64,25 @@ export function mountCamera(root, { url, name, show = { motion: true, regions: t
 
   // Subscribing to `detections` is what tells the worker someone wants AI on this camera (MoQ
   // demand); closing the subscription is what stops the models. cam.setAI(false) does that.
-  let wanted = true, sub, wake;
+  let wanted = true, dead = false, sub, wake;
   cam.setAI = (on) => {
     wanted = on;
     if (on) wake?.();
     else { sub?.close(); results.length = 0; }
   };
+  // Tear down for a camera switch: unsubscribe detections (stops the models) and the video.
+  cam.destroy = () => {
+    dead = true;
+    cam.setAI(false);
+    wake?.();
+    watch.remove();
+    overlay.remove();
+  };
   (async () => {
     const broadcast = origin(url).request(Moq.Path.from(`${name}-ai`));
     for (;;) {
-      while (!wanted) await new Promise((r) => (wake = r));
+      while (!wanted && !dead) await new Promise((r) => (wake = r));
+      if (dead) return;
       try {
         let active = broadcast.active.peek();
         while (!active) { await broadcast.active.changed(); active = broadcast.active.peek(); }
@@ -99,6 +115,7 @@ export function mountCamera(root, { url, name, show = { motion: true, regions: t
   }
 
   function draw() {
+    if (dead) return;
     requestAnimationFrame(draw);
     const r = current();
     if (!r) { ctx.clearRect(0, 0, overlay.width, overlay.height); return; }

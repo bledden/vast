@@ -64,12 +64,12 @@
 <main id="app"></main>
 
 <script type="module">
-  import { mountCamera, follow, renderEvents } from "./camera.js";
+  import { mountCamera, follow, renderEvents, closeAll } from "./camera.js";
 
   const params = new URLSearchParams(location.search);
   const url = params.get("url") ?? "http://localhost:4443";
   const cams = (params.get("cams") ?? "driveway,night,warehouse,street").split(",");
-  const selected = params.get("name") ?? cams[0];
+  let selected = params.get("name") ?? cams[0];
   const host = location.hostname.includes(":") ? `[${location.hostname}]` : location.hostname;
   const askUrl = `http://${host}:8078/ask`;
   const app = document.getElementById("app");
@@ -92,6 +92,7 @@
   for (const name of cams) {
     const tab = $(`<a class="tab"><div class="row"><span class="name"></span><span class="saved">-</span></div><span class="ai">AI: waiting</span></a>`);
     tab.href = link(name);
+    tab.onclick = (e) => { e.preventDefault(); select(name); };
     tab.querySelector(".name").textContent = name;
     if (name === selected) tab.classList.add("on");
     tabs.append(tab);
@@ -106,9 +107,25 @@
 
   const stage = $(`<div></div>`);
   app.append(stage);
-  const cam = mountCamera(stage, { url, name: selected });
   const banner = $(`<div class="banner"></div>`);
+  let cam = mountCamera(stage, { url, name: selected });
   stage.append(banner);
+
+  // Switch in place: the old camera's detections subscription closes (its models stop), the new
+  // one's opens (its models start). A page reload would leave the old subscription to time out.
+  function select(name) {
+    if (name === selected) return;
+    const show = cam.show;
+    cam.destroy();
+    selected = name;
+    cam = mountCamera(stage, { url, name, show });
+    stage.append(banner);
+    banner.classList.remove("on");
+    document.getElementById("ai").checked = true;
+    for (const n of cams) state[n].tab.classList.toggle("on", n === name);
+    history.replaceState(null, "", link(name));
+  }
+  addEventListener("pagehide", closeAll);
 
   const toggles = $(`<div class="toggles">
     <label><input type="checkbox" id="ai" checked> <b>AI on</b> (subscribes to detections; off stops the models)</label>
