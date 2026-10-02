@@ -60,7 +60,7 @@ export function mountCamera(root, { url, name, show = { motion: true, regions: t
   const ctx = overlay.getContext("2d");
 
   const results = [];
-  const cam = { name, show, watch, overlay };
+  const cam = { name, show };
 
   // Subscribing to `detections` is what tells the worker someone wants AI on this camera (MoQ
   // demand); closing the subscription is what stops the models. cam.setAI(false) does that.
