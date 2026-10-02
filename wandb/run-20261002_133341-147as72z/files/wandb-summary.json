@@ -1,1 +1,0 @@
-{"_wandb":{"runtime":0},"_runtime":0,"ms_vs_every_pct":39,"detector_calls":356,"detector_ms":13468,"precision_pct":80,"frames_inferred_pct":26.7,"recall_pct":92.9,"pixels_pct":3.3}

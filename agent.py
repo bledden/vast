@@ -55,7 +55,7 @@ def describe(clip_mp4: bytes, labels: list[str], model: str) -> str:
 def notify(event: dict):
     """POST an alert to ALERT_WEBHOOK (Slack/Discord-style {"text": ...} plus the event)."""
     body = json.dumps({"text": f"[{event['camera']}] {event['summary']}", "event": event}).encode()
-    req = urllib.request.Request(os.environ["ALERT_WEBHOOK"], data=body, headers={"Content-Type": "application/json", "User-Agent": "codec-vision/1.0"})
+    req = urllib.request.Request(os.environ["ALERT_WEBHOOK"], data=body, headers={"Content-Type": "application/json", "User-Agent": "codec-motion/1.0"})
     try:
         urllib.request.urlopen(req, timeout=10).close()
     except Exception as err:

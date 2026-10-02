@@ -13,7 +13,7 @@ import argparse, getpass, json, os, re, subprocess, sys, tempfile, urllib.error,
 from collections import defaultdict
 
 # Cloudflare in front of VSS rejects Python's default User-Agent (error 1010).
-UA = "codec-vision/1.0"
+UA = "codec-motion/1.0"
 CHUNK = re.compile(r"^(?:\d{8}_\d{6}_)?(?P<video>.+?)_chunk_(?P<n>\d+)")
 
 

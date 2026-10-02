@@ -2,7 +2,7 @@
 
 ## Project
 
-**Codec Vision** runs AI on security cameras only when someone is watching and the camera's own
+**Codec Motion** runs AI on security cameras only when someone is watching and the camera's own
 video encoder saw motion. Over MoQ, YOLO and NVIDIA Cosmos skip static frames: 75% less detector
 time at 100% recall on a quiet street camera.
 

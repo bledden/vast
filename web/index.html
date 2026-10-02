@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Codec Vision</title>
+<title>Codec Motion</title>
 <style>
   :root { --bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #3fb950; --alert: #ff3b5c; --warn: #ffc800; }
   * { box-sizing: border-box; }
@@ -75,7 +75,7 @@
   const pct = (x) => `${Math.max(0, Math.round(x))}%`;
   const link = (name) => `?${new URLSearchParams({ ...Object.fromEntries(params), name })}`;
 
-  app.append($(`<header><h1><a href="?">Codec Vision</a></h1>
+  app.append($(`<header><h1><a href="?">Codec Motion</a></h1>
     <span class="sub">AI on security cameras only when someone is watching, and only when the camera's own encoder sees motion</span></header>`));
   app.append($(`<div class="stats">
     <div class="stat win"><b id="saved">-</b><span>GPU detector time saved vs every frame, all cameras</span></div>

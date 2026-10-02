@@ -9,7 +9,7 @@ Each clip is uploaded once; a .uploaded marker records its object key.
 import argparse, getpass, glob, json, os, time, uuid, urllib.request
 
 # Cloudflare in front of VSS rejects Python's default User-Agent (error 1010).
-UA = "codec-vision/1.0"
+UA = "codec-motion/1.0"
 
 
 def login(url, user, password):
@@ -22,7 +22,7 @@ def upload(url, token, path, meta):
     boundary = uuid.uuid4().hex
     fields = {
         "is_public": "true",
-        "tags": ",".join(["codec-vision", "motion-event", *meta.get("labels", [])]),
+        "tags": ",".join(["codec-motion", "motion-event", *meta.get("labels", [])]),
         "camera_id": meta.get("camera", "cam"),
         "custom_prompt": "Security camera clip, kept only because the camera's encoder detected motion. "
                          "Describe the people and vehicles, what each is doing, and where they go. "

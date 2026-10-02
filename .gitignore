@@ -10,3 +10,4 @@ results/
 moving/
 events/
 logs/
+wandb/

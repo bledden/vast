@@ -1,4 +1,4 @@
-# Codec Vision
+# Codec Motion
 
 Built at the [Real-Time Video Agents Hack](https://tokensand.com/vastsf) with VAST, NVIDIA Cosmos, Cursor,
 CoreWeave and Weights & Biases.
