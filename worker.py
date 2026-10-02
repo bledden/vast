@@ -13,7 +13,7 @@ worker doesn't even pull its video. Each frame of
      "stats": {"frames", "inferred", "ms", "full_ms"}}
 `events` frames are a snapshot of the camera's last 10 events.
 """
-import argparse, asyncio, json, os, time
+import argparse, asyncio, contextlib, json, os, time
 
 import av
 import moq
@@ -105,7 +105,8 @@ class Worker:
                 "full_ms": round(float(np.median(self.full_ms)), 1) if self.full_ms else None}
 
 
-async def camera(client, args, det: Detector, name: str):
+async def camera(client, source, args, det: Detector, name: str):
+    """client publishes the AI tracks; source is where the camera is read from (often the same)."""
     out = client.create_broadcast(f"{name}-ai")
     track = out.publish_track("detections")
     events_track = out.publish_track("events")
@@ -127,7 +128,7 @@ async def camera(client, args, det: Detector, name: str):
         await demand.used()
         print(f"{name}: watched; starting AI")
         try:
-            src = await client.announced_broadcast(name)
+            src = await source.announced_broadcast(name)
             cat = await src.catalog()
             video = next(iter(cat.video))
             worker.restart()
@@ -167,13 +168,17 @@ async def camera(client, args, det: Detector, name: str):
 
 async def run(args):
     det = Detector(args.weights)
-    async with moq.connect(args.url) as client:
-        await asyncio.gather(*(camera(client, args, det, name) for name in args.broadcast))
+    async with contextlib.AsyncExitStack() as stack:
+        client = await stack.enter_async_context(moq.connect(args.url))
+        # A publish-only token can't read the cameras; subscribe on a separate (public) URL then.
+        source = await stack.enter_async_context(moq.connect(args.sub_url)) if args.sub_url else client
+        await asyncio.gather(*(camera(client, source, args, det, name) for name in args.broadcast))
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="http://localhost:4443")
+    p.add_argument("--url", default="http://localhost:4443", help="relay URL to publish the AI tracks on")
+    p.add_argument("--sub-url", help="relay URL to read the cameras from, if different (e.g. without a publish token)")
     p.add_argument("--broadcast", nargs="+", default=["cam"])
     p.add_argument("--mode", default="frame", choices=["region", "frame", "every"])
     p.add_argument("--min-cluster", type=int, default=8)
