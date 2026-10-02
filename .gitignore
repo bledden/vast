@@ -1,0 +1,5 @@
+*.mp4
+*.jsonl
+__pycache__/
+.venv/
+clips/
