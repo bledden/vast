@@ -6,11 +6,13 @@ cd "$(dirname "$0")"
 mkdir -p logs
 trap 'kill 0' EXIT
 
+# Prefer the long clips fetch.py joins from consecutive chunks; fall back to single chunks.
+pick() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return; }; done; echo "$1"; }
 cams=(
-  "driveway:footage/neighborhood_20260901_0007.mp4"
-  "night:footage/neighborhood_20260902_0021.mp4"
-  "warehouse:footage/2025_test_Warehouse_017_Camera_01_0007.mp4"
-  "street:footage/sf4_0009.mp4"
+  "driveway:$(pick footage/neighborhood_20260901.mp4 footage/neighborhood_20260901_0007.mp4)"
+  "night:$(pick footage/neighborhood_20260902.mp4 footage/neighborhood_20260902_0021.mp4)"
+  "warehouse:$(pick footage/2025_test_Warehouse_017_Camera_01.mp4 footage/2025_test_Warehouse_017_Camera_01_0007.mp4)"
+  "street:$(pick footage/sf4.mp4 footage/sf4_0009.mp4)"
 )
 
 for cam in "${cams[@]}"; do
