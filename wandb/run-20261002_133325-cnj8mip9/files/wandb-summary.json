@@ -1,0 +1,1 @@
+{"recall_pct":100,"pixels_pct":99.7,"precision_pct":100,"_runtime":0,"_wandb":{"runtime":0},"frames_inferred_pct":99.7,"detector_calls":897,"detector_ms":25196,"ms_vs_every_pct":83.5}

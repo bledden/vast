@@ -1,0 +1,49 @@
+_wandb:
+    value:
+        cli_version: 0.30.0
+        e:
+            iqybmc4ma0k54d813w2jxsyfrlhwcw2w:
+                args:
+                    - results/2025_test_Warehouse_017_Camera_0000.json
+                    - results/2025_test_Warehouse_017_Camera_01_0007.json
+                    - results/neighborhood_20260901_0007.json
+                    - results/neighborhood_20260902_0021.json
+                    - results/run_10_seed_213384163.ceiling_03.rgb_0000.json
+                    - results/scene1_p1c2_0002.json
+                    - results/scene1_p1c3_0003.json
+                    - results/scene1_p1c3_0004.json
+                    - results/sf1_0011.json
+                    - results/sf4_0009.json
+                codePath: wandb_log.py
+                codePathLocal: wandb_log.py
+                executable: /private/tmp/claude-501/-Users-kixelated-work-moq-pro--claude-worktrees-zenlayer-cloud-provider-7e089c/6813cd85-ac38-47c9-8527-3912d366a32d/scratchpad/vast/.venv/bin/python
+                git:
+                    commit: dbcba4c36d1df4ad3cadda70c20e065b983227e3
+                    remote: https://github.com/kixelated/vast.git
+                host: kixtop-2.local
+                os: macOS-26.6.2-arm64-arm-64bit
+                program: /private/tmp/claude-501/-Users-kixelated-work-moq-pro--claude-worktrees-zenlayer-cloud-provider-7e089c/6813cd85-ac38-47c9-8527-3912d366a32d/scratchpad/vast/wandb_log.py
+                python: CPython 3.12.13
+                root: /private/tmp/claude-501/-Users-kixelated-work-moq-pro--claude-worktrees-zenlayer-cloud-provider-7e089c/6813cd85-ac38-47c9-8527-3912d366a32d/scratchpad/vast
+                startedAt: "2026-10-02T20:34:00.119707Z"
+                writerId: iqybmc4ma0k54d813w2jxsyfrlhwcw2w
+        m: []
+        python_version: 3.12.13
+        t:
+            "3":
+                - 2
+                - 13
+                - 16
+                - 62
+            "4": 3.12.13
+            "5": 0.30.0
+            "12": 0.30.0
+            "13": darwin-arm64
+clip:
+    value: scene1_p1c3_0003
+device:
+    value: mps
+frames:
+    value: 1105
+mode:
+    value: every

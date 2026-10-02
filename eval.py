@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare every-frame detection against motion-gated detection on a recorded clip.
 
-    python eval.py clip.mp4 [--render out.mp4] [--wandb]
+    python eval.py clip.mp4 [--render out.mp4] > results/clip.json    # then wandb_log.py
 
 Runs the three Engine modes side by side on the same decoded frames. "every" is the reference:
 recall is the share of its boxes (same class, IoU >= 0.5) that a gated mode also reports.
@@ -59,7 +59,6 @@ def main():
     p.add_argument("video")
     p.add_argument("--weights", default="yolo11n.pt")
     p.add_argument("--render", help="write the region-mode overlay to this mp4")
-    p.add_argument("--wandb", action="store_true", help="log per-mode results to Weights & Biases")
     args = p.parse_args()
 
     det = Detector(args.weights)
@@ -113,12 +112,6 @@ def main():
             "precision_pct": round(100 * t["hit"] / max(1, t["got"]), 1),
         }
     print(json.dumps({"video": args.video, "frames": base["frames"], "device": det.device, "modes": rows}, indent=2))
-
-    if args.wandb:
-        import wandb
-        for m, r in rows.items():
-            with wandb.init(project="vast", name=f"{m}", config={"video": args.video, "mode": m, "device": det.device}, reinit=True) as run:
-                run.log(r)
 
 
 if __name__ == "__main__":
