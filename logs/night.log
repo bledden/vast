@@ -1,0 +1,7 @@
+[2m2026-10-02T21:03:02.617333Z[0m [32m INFO[0m [2mmoq_relay::cluster[0m[2m:[0m cluster initialized [3mhop_id[0m[2m=[0m2843574317081003 [3mconfigured[0m[2m=[0mfalse
+[2m2026-10-02T21:03:02.618131Z[0m [32m INFO[0m [2mmoq_tokio::connection[0m[2m:[0m connecting [3mpeer[0m[2m=[0mhttp://localhost:4443
+[2m2026-10-02T21:03:02.618190Z[0m [32m INFO[0m [2mmoq_relay::cluster[0m[2m:[0m no cluster peers configured; running standalone
+[2m2026-10-02T21:03:02.618542Z[0m [33m WARN[0m [2mmoq_tokio::noq[0m[2m:[0m performing insecure HTTP request for certificate [3murl[0m[2m=[0mhttp://localhost:4443/certificate.sha256
+[2m2026-10-02T21:03:02.618634Z[0m [33m WARN[0m [2mmoq[0m[2m:[0m You should append .hang to your broadcast name to make the catalog format explicit. [3mname[0m[2m=[0m"night"
+[2m2026-10-02T21:03:02.677952Z[0m [32m INFO[0m [2mmoq_tokio::client[0m[2m:[0m connected [3mversion[0m[2m=[0mmoq-lite-06
+[2m2026-10-02T21:03:02.677994Z[0m [32m INFO[0m [2mmoq_tokio::connection[0m[2m:[0m connected [3mpeer[0m[2m=[0mhttp://localhost:4443

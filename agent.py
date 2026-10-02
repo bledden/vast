@@ -19,8 +19,8 @@ COSMOS_URL = os.environ.get("COSMOS_URL", "http://166.19.38.112:8001")
 PROMPT = (
     "You are watching a fixed security camera. This clip is a moment where motion was detected; "
     "an object detector saw: {labels}. In one or two short sentences, say what happened: who or what, "
-    "doing what, going where. Then on its own line write 'ALERT: yes' if a homeowner would want to "
-    "know right now (someone approaching the house, a vehicle stopping, anything unusual), else 'ALERT: no'."
+    "doing what, going where. Then on its own line write 'ALERT: yes' if a person is in the scene, a vehicle "
+    "stops or parks, someone is near a robot, forklift or vehicle, or anything looks unusual; otherwise 'ALERT: no'."
 )
 
 try:
@@ -50,6 +50,16 @@ def describe(clip_mp4: bytes, labels: list[str], model: str) -> str:
         "Content-Type": "application/json", "Authorization": f"Bearer {os.environ['GPU_BEARER_TOKEN']}"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.load(r)["choices"][0]["message"]["content"].strip()
+
+
+def notify(event: dict):
+    """POST an alert to ALERT_WEBHOOK (Slack/Discord-style {"text": ...} plus the event)."""
+    body = json.dumps({"text": f"[{event['camera']}] {event['summary']}", "event": event}).encode()
+    req = urllib.request.Request(os.environ["ALERT_WEBHOOK"], data=body, headers={"Content-Type": "application/json", "User-Agent": "codec-vision/1.0"})
+    try:
+        urllib.request.urlopen(req, timeout=10).close()
+    except Exception as err:
+        print(f"alert webhook failed: {err}")
 
 
 def cosmos_model() -> str:
@@ -138,4 +148,6 @@ class EventAgent:
                 f.write(clip)
             with open(base + ".json", "w") as f:
                 json.dump({**done, "camera": self.camera}, f)
+        if state == "alert" and os.environ.get("ALERT_WEBHOOK"):
+            notify({**done, "camera": self.camera})
         self.done.put(done)

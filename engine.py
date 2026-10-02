@@ -11,7 +11,7 @@ Keyframes carry no vectors, so they always run the full frame and resync the cac
 """
 from __future__ import annotations
 
-import time
+import threading, time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -94,6 +94,10 @@ class Detector:
         self.device = device or ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
         self.conf = conf
         self.names = self.model.names
+        # One detector serves every camera: serialize GPU calls, and time only our own call,
+        # not the wait for another camera's, so per-camera cost stays honest.
+        self.lock = threading.Lock()
+        self.local = threading.local()
         self.model.predict(np.zeros((64, 64, 3), np.uint8), device=self.device, verbose=False)  # warm up
 
     def __call__(self, imgs: list[np.ndarray], imgsz: int) -> list[list[tuple]]:
@@ -108,7 +112,10 @@ class Detector:
             sq[: round(h * k), : round(w * k)] = cv2.resize(img, (round(w * k), round(h * k)))
             squares.append(sq)
             scales.append(k)
-        results = self.model.predict(squares, imgsz=imgsz, device=self.device, conf=self.conf, verbose=False)
+        with self.lock:
+            t = time.perf_counter()
+            results = self.model.predict(squares, imgsz=imgsz, device=self.device, conf=self.conf, verbose=False)
+            self.local.ms = getattr(self.local, "ms", 0.0) + (time.perf_counter() - t) * 1000
         out = []
         for r, k in zip(results, scales):
             b = r.boxes
@@ -118,7 +125,7 @@ class Detector:
 
 class Engine:
     def __init__(self, detector: Detector, mode: str = "region", min_cluster: int = 8, max_gap: int = 300,
-                 max_shift: int = 30, pad: float = 0.25, full_frac: float = 0.5):
+                 max_shift: int = 30, pad: float = 0.25, full_frac: float = 0.5, stride: int = 1):
         assert mode in ("every", "frame", "region"), mode
         self.det, self.mode = detector, mode
         self.min_cluster = min_cluster  # blocks in one changed region to count as motion (noise is scattered singles)
@@ -126,18 +133,24 @@ class Engine:
         self.max_shift = max_shift  # frames a box may be moved by vectors alone before re-detecting it
         self.pad = pad  # context added around each region, as a fraction of its size
         self.full_frac = full_frac  # if regions cover more than this, just run the full frame
+        self.stride = stride  # frame mode: while motion continues, detect at most every Nth frame
         self.cache: list[Det] = []
         self.since_full = 0
 
-    def step(self, img: np.ndarray, g: Grid | None) -> Step:
+    def step(self, img: np.ndarray, g: Grid | None, hold: bool = False) -> Step:
+        """hold: reuse cached boxes this frame (the caller is behind real time)."""
         h, w = img.shape[:2]
         self.since_full += 1
+        if hold and self.cache and g is not None:
+            for d in self.cache:
+                d.state = "cached"
+            return Step(dets=list(self.cache), active=self._active(g.dirty))
         if self.mode == "every" or g is None or self.since_full >= self.max_gap:
             return self._full(img)
 
         active = self._active(g.dirty)
         if self.mode == "frame":
-            if active.any():
+            if active.any() and self.since_full >= self.stride:
                 return self._full(img, active)
             for d in self.cache:
                 d.state = "cached"
@@ -179,7 +192,7 @@ class Engine:
         if sum((x1 - x0) * (y1 - y0) for x0, y0, x1, y1 in boxes) > self.full_frac * w * h:
             return self._full(img, active)
 
-        t = time.perf_counter()
+        self.det.local.ms = 0.0
         crops = [img[y0:y1, x0:x1] for x0, y0, x1, y1 in boxes]
         calls, found = 0, [None] * len(boxes)
         small = [max(c.shape[:2]) <= 400 for c in crops]
@@ -189,7 +202,7 @@ class Engine:
                 for i, r in zip(idx, self.det([crops[i] for i in idx], size)):
                     found[i] = r
                 calls += 1
-        ms = (time.perf_counter() - t) * 1000
+        ms = self.det.local.ms
 
         # Re-detected regions replace whatever the cache had there.
         def inside(d):
@@ -204,9 +217,9 @@ class Engine:
                     pixels=sum((x1 - x0) * (y1 - y0) for x0, y0, x1, y1 in boxes), ms=ms)
 
     def _full(self, img, active=None) -> Step:
-        t = time.perf_counter()
+        self.det.local.ms = 0.0
         res = self.det([img], 640)[0]
-        ms = (time.perf_counter() - t) * 1000
+        ms = self.det.local.ms
         self.cache = [Det(box=xyxy, cls=c, conf=p) for xyxy, c, p in res]
         self.since_full = 0
         h, w = img.shape[:2]
