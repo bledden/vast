@@ -76,8 +76,13 @@ def encode(frames: list[np.ndarray], fps: int) -> bytes:
 class EventAgent:
     def __init__(self, fps: float = 30, sample_fps: int = 4, quiet_s: float = 1.5, max_s: float = 10, min_s: float = 1.0,
                  width: int = 640):
-        self.enabled = bool(os.environ.get("GPU_BEARER_TOKEN"))
-        self.model = cosmos_model() if self.enabled else None
+        self.enabled, self.model = bool(os.environ.get("GPU_BEARER_TOKEN")), None
+        if self.enabled:
+            try:
+                self.model = cosmos_model()
+            except Exception as err:  # bad token or endpoint down: keep the live demo running without descriptions
+                print(f"Cosmos unavailable ({err}); events will not be described")
+                self.enabled = False
         self.every = max(1, round(fps / sample_fps))
         self.sample_fps, self.quiet, self.max = sample_fps, round(quiet_s * fps), round(max_s * fps)
         self.min = round(min_s * fps)  # frames of motion before it counts; leaves and flicker stay quiet

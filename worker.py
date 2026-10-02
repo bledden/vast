@@ -87,33 +87,41 @@ async def run(args):
               f"cosmos={agent.model or 'disabled: no GPU_BEARER_TOKEN'})")
 
         while True:
-            src = await client.request_broadcast(args.broadcast)
-            cat = await src.catalog()
-            name = next(iter(cat.video))
-            worker = Worker(Engine(det, mode=args.mode, min_cluster=args.min_cluster), det.names, agent)
-            media = await src.subscribe_media(name, cat.video[name])
-            started, lag = time.time(), 0.0
-            async with media:
-                async for f in media:
-                    t = time.perf_counter()
-                    for msg in await asyncio.to_thread(worker.process, bytes(f.payload), f.timestamp_us):
-                        track.write_frame(msg, f.timestamp_us)
-                    changed = bool(worker.started)
-                    for ev in worker.started:
-                        events[ev["id"]] = ev
-                    worker.started.clear()
-                    while not agent.done.empty():
-                        ev = agent.done.get()
-                        events[ev["id"]] = ev
-                        changed = True
-                        print(f"event {ev['id']} [{ev['state']}] {ev['labels']}: {ev['summary']} ({ev['ms']} ms)")
-                    if changed:
-                        publish_events(f.timestamp_us)
-                    lag = time.perf_counter() - t
-                    if worker.frames % 150 == 0:
-                        print(f"{worker.frames} frames, inferred {100 * worker.inferred / worker.frames:.0f}%, "
-                              f"detector {worker.ms:.0f} ms, last step {lag * 1000:.0f} ms")
-            print("source ended; waiting for it to come back")
+            try:
+                await serve(client, args, det, agent, track, events, publish_events)
+            except Exception as err:  # camera went away (or is restarting): wait for it to come back
+                print(f"source error: {err!r}; waiting for {args.broadcast}")
+                await asyncio.sleep(1)
+
+
+async def serve(client, args, det, agent, track, events, publish_events):
+    src = await client.announced_broadcast(args.broadcast)
+    cat = await src.catalog()
+    name = next(iter(cat.video))
+    worker = Worker(Engine(det, mode=args.mode, min_cluster=args.min_cluster), det.names, agent)
+    media = await src.subscribe_media(name, cat.video[name])
+    started, lag = time.time(), 0.0
+    async with media:
+        async for f in media:
+            t = time.perf_counter()
+            for msg in await asyncio.to_thread(worker.process, bytes(f.payload), f.timestamp_us):
+                track.write_frame(msg, f.timestamp_us)
+            changed = bool(worker.started)
+            for ev in worker.started:
+                events[ev["id"]] = ev
+            worker.started.clear()
+            while not agent.done.empty():
+                ev = agent.done.get()
+                events[ev["id"]] = ev
+                changed = True
+                print(f"event {ev['id']} [{ev['state']}] {ev['labels']}: {ev['summary']} ({ev['ms']} ms)")
+            if changed:
+                publish_events(f.timestamp_us)
+            lag = time.perf_counter() - t
+            if worker.frames % 150 == 0:
+                print(f"{worker.frames} frames, inferred {100 * worker.inferred / worker.frames:.0f}%, "
+                      f"detector {worker.ms:.0f} ms, last step {lag * 1000:.0f} ms")
+    print("source ended; waiting for it to come back")
 
 
 def main():
