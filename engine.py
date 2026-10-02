@@ -141,21 +141,22 @@ class Engine:
         self.cache: list[Det] = []
         self.since_full = 0
 
-    def step(self, img: np.ndarray, g: Grid | None, hold: bool = False) -> Step:
-        """hold: reuse cached boxes this frame (the caller is behind real time)."""
-        h, w = img.shape[:2]
+    def step(self, img, g: Grid | None, hold: bool = False) -> Step:
+        """img: the frame, or a callable returning it, so frames that never reach the detector are
+        never converted. hold: reuse cached boxes this frame (the caller is behind real time)."""
+        get = img if callable(img) else (lambda: img)
         self.since_full += 1
         if hold and self.cache and g is not None:
             for d in self.cache:
                 d.state = "cached"
             return Step(dets=list(self.cache), active=self._active(g.dirty))
         if self.mode == "every" or g is None or self.since_full >= self.max_gap:
-            return self._full(img)
+            return self._full(get())
 
         active = self._active(g.dirty)
         if self.mode == "frame":
             if active.any() and self.since_full >= self.stride:
-                return self._full(img, active)
+                return self._full(get(), active)
             for d in self.cache:
                 d.state = "cached"
             return Step(dets=list(self.cache), active=active)
@@ -192,6 +193,8 @@ class Engine:
         if not regions:
             return Step(dets=list(self.cache), active=active)
 
+        img = get()
+        h, w = img.shape[:2]
         boxes = self._merge([self._padded(r, w, h) for r in regions])
         if sum((x1 - x0) * (y1 - y0) for x0, y0, x1, y1 in boxes) > self.full_frac * w * h:
             return self._full(img, active)

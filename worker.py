@@ -54,16 +54,22 @@ class Worker:
         out = []
         if not payload:  # an empty packet would flush the decoder into EOF
             return out
+        now = time.monotonic()
+        if self.clock is None or ts < self.clock[1]:  # first frame, or the looping source restarted
+            self.clock = (now, ts)
+        behind = (now - self.clock[0]) - (ts - self.clock[1]) / 1e6
+        if behind < -1:  # we got ahead (paused source): re-anchor
+            self.clock, behind = (now, ts), 0.0
         for frame in self.codec.decode(av.Packet(payload)):
-            img = frame.to_ndarray(format="bgr24")
-            h, w = img.shape[:2]
+            w, h = frame.width, frame.height
+            cache = []
+
+            def img():  # convert to pixels only if something needs them
+                if not cache:
+                    cache.append(frame.to_ndarray(format="bgr24"))
+                return cache[0]
+
             g = grid(frame, w, h)
-            now = time.monotonic()
-            if self.clock is None or ts < self.clock[1]:  # first frame, or the looping source restarted
-                self.clock = (now, ts)
-            behind = (now - self.clock[0]) - (ts - self.clock[1]) / 1e6
-            if behind < -1:  # we got ahead (paused source): re-anchor
-                self.clock = (now, ts)
             hold = behind > 0.3
             step = self.engine.step(img, g, hold=hold)
             if hold and not step.calls:
@@ -86,7 +92,7 @@ class Worker:
             if step.full:
                 self.full_ms.append(step.ms)
             if self.codec_view:
-                self.rendered.append((ts, codecview.render(img, g, step, self.names)))
+                self.rendered.append((ts, codecview.render(img(), g, step, self.names)))
             motion = []
             if g is not None and step.active is not None:
                 ys, xs = np.nonzero(step.active & g.moved)

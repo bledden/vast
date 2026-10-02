@@ -104,8 +104,9 @@ class EventAgent:
         self.event = None
         self.n = 0
 
-    def feed(self, img: np.ndarray, ts: int, moving: bool, labels: list[str]) -> dict | None:
-        """Call once per frame. Returns an event-start message to publish, if one began."""
+    def feed(self, img, ts: int, moving: bool, labels: list[str]) -> dict | None:
+        """Call once per frame (img may be a callable returning the frame). Returns an event-start
+        message to publish, if one began."""
         self.n += 1
         started = None
         if moving and self.event is None:
@@ -120,8 +121,9 @@ class EventAgent:
             started = {"id": e["id"], "start": e["start"], "state": "analyzing" if self.enabled else "no-agent"}
         e["labels"].update(labels)
         if e["len"] % self.every == 1:
-            h, w = img.shape[:2]
-            e["frames"].append(cv2.resize(img, (self.width, round(h * self.width / w / 2) * 2)))
+            frame = img() if callable(img) else img
+            h, w = frame.shape[:2]
+            e["frames"].append(cv2.resize(frame, (self.width, round(h * self.width / w / 2) * 2)))
         if e["quiet"] >= self.quiet or e["len"] >= self.max:
             self.event = None
             e["end"] = ts
