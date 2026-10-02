@@ -41,7 +41,7 @@ prefix=${PREFIX:-}
 
 if [ -n "${RELAY_URL:-}" ]; then
   relay=$RELAY_URL
-  echo "demo: publishing to ${relay%%\?*} as ${prefix}<camera>"
+  echo "demo: publishing to ${relay%%\?*} as ${prefix}<camera>.hang"
 else
   relay=http://localhost:4443
   MOQ_RELAY=${MOQ_RELAY:-moq-relay}
@@ -62,8 +62,9 @@ fi
 names=()
 for cam in "${cams[@]}"; do
   name=${cam%%:*}
-  ./camera.sh "${cam#*:}" "$prefix$name" "$relay" >"logs/$name.log" 2>&1 &
-  names+=("$prefix$name")
+  # .hang marks the catalog format, so any MoQ player (and the CDN dashboard) can play it.
+  ./camera.sh "${cam#*:}" "$prefix$name.hang" "$relay" >"logs/$name.log" 2>&1 &
+  names+=("$prefix$name.hang")
 done
 
 sub=()

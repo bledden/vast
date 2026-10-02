@@ -106,16 +106,20 @@ class Worker:
 
 
 async def camera(client, source, args, det: Detector, name: str):
-    """client publishes the AI tracks; source is where the camera is read from (often the same)."""
-    out = client.create_broadcast(f"{name}-ai")
+    """client publishes the AI tracks; source is where the camera is read from (often the same).
+
+    name is the camera's video broadcast (e.g. driveway.hang); its AI tracks go on <base>-ai.
+    """
+    ai = name.removesuffix(".hang") + "-ai"
+    out = client.create_broadcast(ai)
     track = out.publish_track("detections")
     events_track = out.publish_track("events")
     stats_track = out.publish_track("stats")
     demand = track.demand()
     out.announce()
-    agent = EventAgent(camera=name, save=args.save_events)
+    agent = EventAgent(camera=name.removesuffix(".hang"), save=args.save_events)
     events = {}  # id -> latest state; published as a snapshot so late viewers see history
-    print(f"{name}: publishing {name}-ai (mode={args.mode}, cosmos={agent.model or 'disabled'})")
+    print(f"{name}: publishing {ai} (mode={args.mode}, cosmos={agent.model or 'disabled'})")
 
     worker = Worker(Engine(det, mode=args.mode, min_cluster=args.min_cluster, stride=args.stride), det.names, agent)
 

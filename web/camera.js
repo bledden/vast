@@ -47,7 +47,8 @@ export async function follow(url, path, name, onText, priority = 0) {
   }
 }
 
-export function mountCamera(root, { url, name, show = { motion: true, regions: true, boxes: true } }) {
+// name: the camera's video broadcast; ai: the broadcast with its detections track.
+export function mountCamera(root, { url, name, ai = `${name}-ai`, show = { motion: true, regions: true, boxes: true } }) {
   root.classList.add("stage");
   const watch = document.createElement("moq-watch");
   watch.setAttribute("url", url);
@@ -79,7 +80,7 @@ export function mountCamera(root, { url, name, show = { motion: true, regions: t
     overlay.remove();
   };
   (async () => {
-    const broadcast = origin(url).request(Moq.Path.from(`${name}-ai`));
+    const broadcast = origin(url).request(Moq.Path.from(ai));
     for (;;) {
       while (!wanted && !dead) await new Promise((r) => (wake = r));
       if (dead) return;
@@ -97,7 +98,7 @@ export function mountCamera(root, { url, name, show = { motion: true, regions: t
           }
         }
       } catch (err) {
-        if (wanted) console.warn(`${name}-ai/detections: ${err.message}; retrying`);
+        if (wanted) console.warn(`${ai}/detections: ${err.message}; retrying`);
       }
       sub = undefined;
       if (wanted) await new Promise((r) => setTimeout(r, 1000));

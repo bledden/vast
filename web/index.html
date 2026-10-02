@@ -110,7 +110,8 @@
   const stage = $(`<div></div>`);
   app.append(stage);
   const banner = $(`<div class="banner"></div>`);
-  let cam = mountCamera(stage, { url, name: prefix + selected });
+  // Video is <camera>.hang (playable anywhere); detections/events/stats are on <camera>-ai.
+  let cam = mountCamera(stage, { url, name: `${prefix}${selected}.hang`, ai: `${prefix}${selected}-ai` });
   stage.append(banner);
 
   // Switch in place: the old camera's detections subscription closes (its models stop), the new
@@ -120,7 +121,7 @@
     const show = cam.show;
     cam.destroy();
     selected = name;
-    cam = mountCamera(stage, { url, name: prefix + name, show });
+    cam = mountCamera(stage, { url, name: `${prefix}${name}.hang`, ai: `${prefix}${name}-ai`, show });
     stage.append(banner);
     banner.classList.remove("on");
     updateBanner();
