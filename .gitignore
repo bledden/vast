@@ -13,3 +13,4 @@ logs/
 wandb/
 dist/
 .wrangler/
+hosted.sh

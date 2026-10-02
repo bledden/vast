@@ -68,4 +68,4 @@ done
 
 sub=()
 [ -n "${RELAY_URL:-}" ] && sub=(--sub-url "${RELAY_URL%%\?*}")  # read cameras on the public URL; the token may be publish-only
-.venv/bin/python -u worker.py --url "$relay" "${sub[@]}" --broadcast "${names[@]}" "$@" 2>&1 | grep --line-buffered -v '^objc'
+.venv/bin/python -u worker.py --url "$relay" ${sub[@]+"${sub[@]}"} --broadcast "${names[@]}" "$@" 2>&1 | grep --line-buffered -v '^objc'
