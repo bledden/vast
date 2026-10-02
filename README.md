@@ -14,6 +14,11 @@ Most cameras can't run AI on-device, so they upload video and a server runs dete
 frame. But most security cameras are static: a driveway, a loading dock, a hallway. Nearly every
 frame looks like the last one, and every-frame detection mostly pays a GPU to look at nothing.
 
+VAST's own video search pipeline (the VSS blueprint) works the same way: it cuts footage into
+5-second segments and every segment goes through YOLO on every frame, then Cosmos, then the
+embedder. Its only skips are operational (already indexed, wrong file type), not "this clip is
+static."
+
 ## The idea
 
 The camera already did the work. To compress video, an H.264 encoder estimates motion for every
@@ -68,6 +73,13 @@ falls behind real time and has to skip frames, those count as full cost, never a
 
 Cosmos only runs on events: about 4 per 40 seconds of the neighborhood clip, at about 1.2s each,
 instead of describing every chunk of footage.
+
+## Where it fits in VSS
+
+The same gate drops into VSS as one more DataEngine function between the segmenter and the
+detector: `score.py` already decides, from codec data alone, whether a segment had any motion.
+Static segments would never reach YOLO, Cosmos or the embedder, so the saving lands on the
+expensive stages too.
 
 ## What didn't work (yet)
 
