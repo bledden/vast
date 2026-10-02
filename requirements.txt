@@ -1,9 +1,10 @@
-av
-numpy
+av>=19
+numpy>=2
 scipy
 pillow
-boto3
-ultralytics
+opencv-python
+ultralytics>=8.4
+moq-rs>=0.5.1,<0.6
 wandb
 weave
-moq-rs
+boto3

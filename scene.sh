@@ -4,7 +4,7 @@
 # and a person walking in from the right between 3s and 9s. H.264, no B-frames, 2s GOP.
 set -euo pipefail
 out=${1:-scene.mp4}
-assets=$(python -c 'import ultralytics, os; print(os.path.join(os.path.dirname(ultralytics.__file__), "assets"))')
+assets=$("${PYTHON:-python}" -c 'import ultralytics, os; print(os.path.join(os.path.dirname(ultralytics.__file__), "assets"))')
 ffmpeg -hide_banner -loglevel error -y \
   -loop 1 -framerate 30 -i "$assets/bus.jpg" \
   -loop 1 -framerate 30 -i "$assets/zidane.jpg" \

@@ -90,20 +90,41 @@ expensive stages too.
 - **Noise:** on flat, noisy areas the encoder matches sensor noise with tiny vectors; we ignore
   motion under 2.5 px per frame and clusters under 8 blocks.
 
-## Run it
+## Run it on your machine
 
-Everything runs locally on a laptop (tested on an M-series Mac).
+**You need:**
+
+- macOS on Apple Silicon, or Linux with an NVIDIA GPU. YOLO runs locally; on CPU alone it works but
+  can't keep up with a live camera.
+- Python 3.12 and [uv](https://docs.astral.sh/uv/), FFmpeg with libx264 (`brew install ffmpeg`),
+  Rust (`cargo`), and Chrome or Edge (the player uses WebTransport).
+- `moq-relay` 0.16+ and the `moq` CLI 0.13+. Install them with cargo; Homebrew's `moq-relay` is
+  older and rejects `relay.toml`.
 
 ```sh
-uv venv && uv pip install -r requirements.txt     # plus moq and moq-relay on PATH
-./demo.sh                                         # relay + 4 looping cameras + worker + viewer
-                                                  # open http://localhost:8077 in Chrome
+git clone https://github.com/kixelated/vast && cd vast
+cargo install moq-relay@0.16.0 moq-cli@0.13.0
+uv venv --python 3.12 && uv pip install -r requirements.txt
+cp .env.example .env      # optional: Cosmos token, W&B key, alert webhook
+./demo.sh                 # then open http://localhost:8077 in Chrome
 ```
 
-- `./prep.sh <dir> footage` re-encodes clips the way a simple camera sends them (H.264, no B-frames).
-- Put `GPU_BEARER_TOKEN` (Cosmos endpoint) and `WANDB_API_KEY` in a git-ignored `.env`.
-- `python worker.py --save-events` writes described event clips to `events/`, and
-  `VSS_USERNAME=... python upload.py --watch` pushes them into VAST VSS for search.
+`demo.sh` starts a local relay, four looping "cameras", the worker and the viewer; Ctrl-C stops
+everything and logs go to `logs/`. Without the corpus footage (next section), every camera plays a
+synthetic scene generated on first run, so the demo works anywhere. The first run also downloads the
+YOLO11n weights (6 MB).
+
+Without a `GPU_BEARER_TOKEN`, motion events still appear but Cosmos doesn't describe them.
+
+**If something's off:**
+
+| Symptom | Fix |
+|---|---|
+| `moq-relay ... is too old` | An older relay is first on PATH: `MOQ_RELAY=$(which -a moq-relay \| tail -1) ./demo.sh`, or point it at `~/.cargo/bin/moq-relay` |
+| `moq not found` | `MOQ=~/.cargo/bin/moq ./demo.sh` |
+| `port 4443 is in use` | Another relay or demo is running; stop it first |
+| Video stays black | Use Chrome, keep the tab visible (the player pauses hidden tabs), reload once the worker prints `publishing` |
+| Boxes lag the video | The machine can't keep up; close other GPU work, or watch the quieter `driveway` camera |
 
 ## Footage
 
